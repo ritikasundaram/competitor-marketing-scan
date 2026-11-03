@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 load_dotenv(ROOT / ".env")
 
-from runner import discover_competitors, scan_company  # noqa: E402
+from runner import discover_competitors, exa_stop_reason, scan_company  # noqa: E402
 
 app = FastAPI(title="Competitor Marketing Scan")
 
@@ -72,8 +72,11 @@ def health():
 @app.post("/api/discover")
 def discover(body: DiscoverBody):
     client = None if body.mock else _exa_client()
-    found = discover_competitors(client, body.name, body.domain, body.description,
-                                 max_n=body.max_competitors, dry=body.mock)
+    try:
+        found = discover_competitors(client, body.name, body.domain, body.description,
+                                     max_n=body.max_competitors, dry=body.mock)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, exa_stop_reason(e) or f"Competitor discovery failed: {str(e)[:200]}")
     return {"competitors": found}
 
 

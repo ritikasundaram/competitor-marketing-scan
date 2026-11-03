@@ -16,4 +16,5 @@ max_queries_per_competitor: 4
 fetch_proof: true # Exa get_contents for top campaign URLs
 max_proof_urls: 5
 max_age_days: 365 # campaigns older than this are excluded (0 = keep all)
+scan_self: true # also scan your own company so recommendations skip what you already do
 synthesis: auto # auto (OpenAI if OPENAI_API_KEY), template ($0), or openai

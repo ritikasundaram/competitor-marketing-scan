@@ -22,9 +22,17 @@
 | Messaging |        |        |
 
 ## Recommendations for <My Company>
-1.
+1. **<Title>** — <one concrete action>. <Why, tied to the evidence.>
+   - Evidence: <Competitor>: [<campaign>](<URL>); ...
 2.
 
+## <My Company>'s own recent campaigns
+- [<campaign>](<URL>) — <message>
+
+## Excluded from analysis
+- <Competitor>: [<campaign>](<URL>) — <reason: old / not <Competitor>: run by ...>
+
 ## Method + Limitations
+- Fact checks: excluded N about a different company, N older than 365 days; N undated; N with numbers not found in source.
 - Exa queries used: ...
 - Effectiveness is public-proxy only. No revenue/spend/ROI available via web search.

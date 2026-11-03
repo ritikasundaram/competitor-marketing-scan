@@ -214,16 +214,16 @@ export default function Dashboard({ report }: { report: SavedReport }) {
           <thead className="text-xs text-slate-500">
             <tr>
               <th className="py-2 pr-4 font-medium">Competitor</th>
-              <th className="py-2 pr-4 font-medium tabular-nums">Campaigns</th>
-              <th className="w-1/2 py-2 pr-4 font-medium">Strong / Medium / Weak</th>
-              <th className="py-2 font-medium">Top channel</th>
+              <th className="hidden py-2 pr-4 font-medium tabular-nums sm:table-cell">Campaigns</th>
+              <th className="py-2 pr-4 font-medium sm:w-1/2">Strong / Medium / Weak</th>
+              <th className="hidden py-2 font-medium sm:table-cell">Top channel</th>
             </tr>
           </thead>
           <tbody>
             {perCompetitor.map((p) => (
               <tr key={p.name} className="border-t border-slate-100">
                 <td className="py-2.5 pr-4 font-medium">{p.name}</td>
-                <td className="py-2.5 pr-4 tabular-nums text-slate-600">{p.total}</td>
+                <td className="hidden py-2.5 pr-4 tabular-nums text-slate-600 sm:table-cell">{p.total}</td>
                 <td className="py-2.5 pr-4">
                   <div className="flex items-center gap-2">
                     <StrengthBar name={p.name} counts={p.counts} max={maxTotal} />
@@ -232,7 +232,7 @@ export default function Dashboard({ report }: { report: SavedReport }) {
                     </span>
                   </div>
                 </td>
-                <td className="py-2.5 text-slate-600">{p.channel}</td>
+                <td className="hidden py-2.5 text-slate-600 sm:table-cell">{p.channel}</td>
               </tr>
             ))}
           </tbody>

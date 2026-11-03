@@ -260,6 +260,21 @@ def relevance_prompt(target: str) -> str:
     )
 
 
+class ExaStop(RuntimeError):
+    """An Exa error that makes the rest of the scan pointless (bad key, rate limit, no credit)."""
+
+
+def exa_stop_reason(err: Exception) -> str | None:
+    msg = str(err)
+    if "401" in msg or "INVALID_API_KEY" in msg or "403" in msg:
+        return "Exa rejected the API key. Check EXA_API_KEY in .env (dashboard.exa.ai/api-keys)."
+    if "429" in msg or "rate limit" in msg.lower():
+        return "Exa rate limit reached. Wait a bit and try again, or check your Exa plan."
+    if "402" in msg or "credits" in msg.lower():
+        return "Exa account is out of credits. Top up at dashboard.exa.ai."
+    return None
+
+
 def _parse_output_content(result) -> list:
     try:
         content = result.output.content if hasattr(result, "output") and result.output else None
@@ -577,8 +592,10 @@ def run_competitor(tracer: Tracer, name: str, domain: str, cfg: dict, client, dr
                         graded_hits.extend(graded)
                     except Exception as e:
                         s.set("error", str(e)[:300])
-                        print(f"    ! Exa error (rate limit or key?): {e}")
-                        break
+                        stop = exa_stop_reason(e)
+                        if stop:
+                            raise ExaStop(stop) from e
+                        print(f"    ! Exa search failed for this query, skipping it: {e}")
             if graded_hits:
                 # Keep each raw result's publish date + highlights so the graded
                 # rows can be checked against what the source said.
@@ -919,6 +936,7 @@ def write_report(my_company: str, results: dict, run_id: str, cfg: dict | None =
 def llm_synthesize(my_company: str, results: dict, base_md: str) -> str | None:
     """Optional OpenAI rewrite of the template report. Keeps citations and disclaimers."""
     if not os.getenv("OPENAI_API_KEY"):
+        print("    ! OpenAI rewrite skipped: OPENAI_API_KEY is not set, keeping the template report.")
         return None
     try:
         from openai import OpenAI
@@ -1061,8 +1079,11 @@ def main():
     confirm_fn = None
     if _sys.stdin.isatty() and not args.dry_run:
         confirm_fn = confirm_competitors
-    out = scan_company(cfg, tracer_backend=args.tracer, client=client,
-                       dry=args.dry_run, confirm_fn=confirm_fn)
+    try:
+        out = scan_company(cfg, tracer_backend=args.tracer, client=client,
+                           dry=args.dry_run, confirm_fn=confirm_fn)
+    except ExaStop as e:
+        raise SystemExit(f"Scan stopped: {e}")
     print(f"\nReport: {out['report_path']}\nTrace: traces/{out['run_id']}.jsonl")
 
 
@@ -1081,9 +1102,15 @@ def scan_company(cfg: dict, tracer_backend: str = "none", client=None,
         if not cfg.get("competitors"):
             me = cfg["my_company"]
             with tracer.span("exa.discover", {"company": me["name"]}) as s:
-                found = discover_competitors(client, me["name"], me.get("domain", ""),
-                                             me.get("description", ""),
-                                             max_n=cfg.get("max_competitors", 4), dry=dry)
+                try:
+                    found = discover_competitors(client, me["name"], me.get("domain", ""),
+                                                 me.get("description", ""),
+                                                 max_n=cfg.get("max_competitors", 4), dry=dry)
+                except Exception as e:
+                    stop = exa_stop_reason(e)
+                    if stop:
+                        raise ExaStop(stop) from e
+                    raise
                 s.set("discovered", len(found))
                 if on_step:
                     on_step("discovered", {"competitors": found})
