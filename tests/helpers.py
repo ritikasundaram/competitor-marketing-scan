@@ -77,10 +77,11 @@ FIGMA_OWN = [
 class FakeExa:
     """Answers search / get_contents / answer like exa_py does, from the fixtures above."""
 
-    def __init__(self, pages=None, fail_search="", fail_once=False):
+    def __init__(self, pages=None, fail_search="", fail_once=False, uncited_unless_pro=False):
         self.pages = pages or {"Sketch": SKETCH, "Figma": FIGMA_OWN}
         self.fail_search = fail_search  # error text to raise from search(), e.g. "429 rate limit"
         self.fail_once = fail_once
+        self.uncited_unless_pro = uncited_unless_pro  # mimic the default model ignoring the list
         self.calls: list = []
 
     def _for(self, query):
@@ -115,6 +116,9 @@ class FakeExa:
         self.calls.append(("answer", query, kw))
         ids = re.findall(r"- (C\d+) ", kw.get("system_prompt", ""))
         own = re.findall(r"- (M\d+) ", kw.get("system_prompt", ""))
+        if self.uncited_unless_pro and kw.get("model") != "exa-pro":
+            return NS(answer={"recommendations": [{"title": "Generic", "action": "x", "why": "y", "evidence": []}]},
+                      citations=[])
         recs = [
             {"title": "Kept", "action": "Do the thing.", "why": "Rival did it.", "evidence": ids[:1] + own[:1]},
             {"title": "Web-only", "action": "x", "why": "y", "evidence": ["https://example.com/article"]},

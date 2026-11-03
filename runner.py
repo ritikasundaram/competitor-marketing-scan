@@ -737,36 +737,54 @@ def exa_recommendations(client, my_company: dict, results: dict, max_campaigns: 
         for cid, c in by_id.items())
     me = my_company.get("name", "")
     about = who_is(me, my_company.get("domain", ""), my_company.get("description", ""))
-    try:
-        r = client.answer(
-            f"What should {me} do in its marketing next, given these competitors' recent campaigns?",
-            system_prompt=(
-                f"You advise the marketing team of {about}. Use ONLY the campaign list below as evidence "
-                "about competitors. Give 3-5 specific, actionable recommendations for this company: gaps "
-                "it can fill, messages or channels to counter, tactics worth adapting. Each needs: title "
-                "(short), action (one concrete sentence), why (one sentence tied to the evidence), and "
-                "evidence (the campaign IDs from the list that support it, e.g. [\"C3\", \"C7\"]). "
-                "Base every recommendation on listed campaigns, not on other web pages. Do not invent numbers, spend, "
-                "ROI, or campaigns not in the list; effectiveness is public-proxy only. "
-                f"The second list is {me}'s own recent campaigns: do not recommend something {me} is "
-                "already doing; if you build on one of its own campaigns, say how to go further and "
-                "include its M ID in evidence too. Every recommendation needs at least one C ID.\n\n"
-                f"Competitor campaigns:\n{facts}\n\n{me}'s own recent campaigns:\n{own_facts}"),
-            output_schema=RECS_SCHEMA,
-        )
-        content = r.answer
-        if isinstance(content, str):
-            content = json.loads(content)
-        recs = (content or {}).get("recommendations", []) or []
-    except Exception as e:
-        print(f"    ! Exa answer recommendations skipped ({e})")
-        return []
+    question = f"What should {me} do in its marketing next, given these competitors' recent campaigns?"
+    # The retry names the IDs in the question itself; without that, short lists often come back uncited.
+    strict = (f"Which marketing moves for {me} do competitor campaigns {', '.join(by_id)} suggest? "
+              "Cite those IDs as evidence.")
+    for model, query in ((None, question), ("exa-pro", strict)):
+        try:
+            r = client.answer(
+                query,
+                system_prompt=(
+                    f"You advise the marketing team of {about}. Use ONLY the campaign list below as evidence "
+                    "about competitors. Give 3-5 specific, actionable recommendations for this company: gaps "
+                    "it can fill, messages or channels to counter, tactics worth adapting. Each needs: title "
+                    "(short), action (one concrete sentence), why (one sentence tied to the evidence), and "
+                    "evidence (the campaign IDs from the list that support it, e.g. [\"C3\", \"C7\"]). "
+                    "Base every recommendation on listed campaigns, not on other web pages. Do not invent numbers, spend, "
+                    "ROI, or campaigns not in the list; effectiveness is public-proxy only. "
+                    f"The second list is {me}'s own recent campaigns: do not recommend something {me} is "
+                    "already doing; if you build on one of its own campaigns, say how to go further and "
+                    "include its M ID in evidence too. Every recommendation needs at least one C ID; evidence must "
+                    "never be empty.\n\n"
+                    f"Competitor campaigns:\n{facts}\n\n{me}'s own recent campaigns:\n{own_facts}"),
+                output_schema=RECS_SCHEMA,
+                **({"model": model} if model else {}),
+            )
+            content = r.answer
+            if isinstance(content, str):
+                content = json.loads(content)
+            recs = (content or {}).get("recommendations", []) or []
+        except Exception as e:
+            print(f"    ! Exa answer recommendations skipped ({e})")
+            return []
+        out = _check_recs(recs, by_id, mine, me_name)
+        if out:
+            return out
+        # The default model sometimes ignores the list (empty evidence); retry once with exa-pro.
+        print(f"    ! No recommendation from model {model or 'exa'} cited scanned campaigns"
+              + ("; retrying with exa-pro" if model is None else ""))
+    return []
+
+
+def _check_recs(recs: list, by_id: dict, mine: dict, me_name: str) -> list:
+    """Keep recommendations that cite at least one scanned competitor campaign; flag unbacked numbers."""
 
     out = []
     for rec in recs[:5]:
         cited = []
         for ref in rec.get("evidence") or []:
-            key = str(ref).strip().strip("[]").upper()
+            key = str(ref).strip().strip("[],.;'\"").strip().upper()
             c = by_id.get(key) or mine.get(key)
             if c and c.get("url") and c["url"] not in [x["url"] for x in cited]:
                 cited.append({"competitor": c["competitor"], "title": c.get("title", ""), "url": c["url"]})
@@ -818,7 +836,7 @@ def report_summary(results: dict, old: dict | None, cfg: dict | None, run_id: st
         "known date. Numbers in a Signal/Why must appear in the search highlights or fetched page — "
         f"{checks['unverified_numbers']} campaign(s) had numbers that didn't, so their confidence is set "
         "to Low and they are left out of recommendations.",
-        f"Exa queries per competitor: {', '.join(queries)}",
+        "Exa queries per competitor: " + ", ".join(q.format(n="<name> (<domain>)") for q in queries),
         f"Results per query: {cfg.get('max_results_per_query', 10)}; grading: "
         f"{'Exa' if cfg.get('grade', True) else 'off'}.",
         f"Proof fetched for up to {cfg.get('max_proof_urls', 5)} campaign URLs per competitor.",

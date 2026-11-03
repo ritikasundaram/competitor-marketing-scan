@@ -83,6 +83,23 @@ class FakeExaScanTests(unittest.TestCase):
         self.assertTrue(any(s["span"] == "exa.answer" for s in spans))
 
 
+class RecommendationRetryTests(unittest.TestCase):
+    def test_retries_with_exa_pro_when_nothing_is_cited(self):
+        client = FakeExa(uncited_unless_pro=True)
+        with TempOutput() as out:
+            runner.scan_company(dict(CFG), client=client)
+            data = json.loads(next((out.path / "reports").glob("*.json")).read_text())
+        models = [kw.get("model") for k, _, kw in client.calls if k == "answer"]
+        self.assertEqual(models, [None, "exa-pro"])
+        self.assertIn("Kept", [r["title"] for r in data["recommendations"]])
+
+    def test_no_retry_when_first_answer_is_cited(self):
+        client = FakeExa()
+        with TempOutput():
+            runner.scan_company(dict(CFG), client=client)
+        self.assertEqual(len([1 for k, _, _ in client.calls if k == "answer"]), 1)
+
+
 class OptionTests(unittest.TestCase):
     def run_scan(self, **cfg):
         client = FakeExa()

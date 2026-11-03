@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Campaign, SavedReport } from "./api";
 
 // Local Phoenix UI (see README); scans traced there get a direct link.
@@ -88,7 +88,7 @@ function StrengthBar({ name, counts, max }: { name: string; counts: Record<strin
 
 function Tile({ label, value, note }: { label: string; value: number; note?: string }) {
   return (
-    <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
+    <div className="print-keep rounded-xl border border-slate-200 bg-white p-4">
       <div className="text-xs font-medium text-slate-500">{label}</div>
       <div className="mt-1 text-3xl font-semibold text-slate-900">{value}</div>
       {note && <div className="mt-1 text-xs text-slate-500">{note}</div>}
@@ -109,6 +109,30 @@ export default function Dashboard({ report }: { report: SavedReport }) {
   const [query, setQuery] = useState("");
   const [strength, setStrength] = useState("All");
   const [competitor, setCompetitor] = useState("All");
+
+  // When printing: open every fold-out section so nothing prints collapsed, and name the
+  // tab after the report (browsers use it as the PDF file name). Restore both afterwards.
+  useEffect(() => {
+    let reopen: HTMLDetailsElement[] = [];
+    let title = "";
+    const before = () => {
+      reopen = Array.from(document.querySelectorAll<HTMLDetailsElement>("#report details:not([open])"));
+      reopen.forEach((d) => (d.open = true));
+      title = document.title;
+      const name = data?.my_company.name ?? report.run_id;
+      document.title = `${name} competitor scan ${data?.date ?? ""} (${report.run_id})`.replace(/\s+/g, " ");
+    };
+    const after = () => {
+      reopen.forEach((d) => (d.open = false));
+      if (title) document.title = title;
+    };
+    window.addEventListener("beforeprint", before);
+    window.addEventListener("afterprint", after);
+    return () => {
+      window.removeEventListener("beforeprint", before);
+      window.removeEventListener("afterprint", after);
+    };
+  }, [data, report.run_id]);
 
   const campaigns: Campaign[] = useMemo(
     () =>
@@ -376,8 +400,8 @@ export default function Dashboard({ report }: { report: SavedReport }) {
             ))}
           </select>
         </div>
-        <div className="overflow-x-auto rounded-xl ring-1 ring-slate-200">
-          <table className="w-full min-w-[860px] text-left text-sm">
+        <div className="overflow-x-auto rounded-xl border border-slate-200 print:overflow-visible">
+          <table className="w-full min-w-[860px] text-left text-sm print:min-w-0 print:text-xs">
             <thead className="bg-slate-50 text-xs text-slate-500">
               <tr>
                 {["Competitor", "Campaign", "Channel", "Signal", "Strength", "Confidence"].map((h) => (

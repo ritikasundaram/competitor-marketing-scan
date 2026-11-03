@@ -38,9 +38,20 @@ export default function App() {
     listRuns().then(setRuns).catch(() => {});
   }, []);
 
+  // A report can be opened from the address bar: /?run=<id>
+  useEffect(() => {
+    const run = new URLSearchParams(window.location.search).get("run");
+    if (run) {
+      setSavedRunId(run);
+      openReport(run);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function openReport(runId: string) {
     try {
       setReport(await fetchReport(runId));
+      window.history.replaceState(null, "", `?run=${runId}`);
       setTimeout(() => document.getElementById("report")?.scrollIntoView({ behavior: "smooth" }), 50);
     } catch (e) {
       setError(String(e));

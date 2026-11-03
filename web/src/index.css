@@ -3,3 +3,29 @@
 body {
   @apply bg-slate-50 text-slate-900 antialiased;
 }
+
+/* Printing / Save as PDF: keep the chart colors, drop shadows (they print as gray frames),
+   and don't split a tile, list item or table row across pages. */
+@media print {
+  body {
+    background: white;
+  }
+  #report,
+  #report * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    box-shadow: none !important;
+  }
+  /* Keep small pieces whole; let big sections flow across pages (no half-empty pages). */
+  #report tr,
+  #report li,
+  #report dl > div,
+  #report .print-keep {
+    break-inside: avoid;
+  }
+  #report h3,
+  #report h4,
+  #report summary {
+    break-after: avoid;
+  }
+}
