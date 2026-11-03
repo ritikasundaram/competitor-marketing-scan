@@ -1,0 +1,828 @@
+{
+ "run_id": "37836d3b",
+ "date": "2026-11-03",
+ "my_company": {
+  "name": "Figma",
+  "domain": "figma.com",
+  "description": "Collaborative design tool"
+ },
+ "competitors": {
+  "Penpot": [
+   {
+    "title": "Penpot Ambassador Program Launch",
+    "url": "https://penpot.app/blog/the-spirit-of-open-source-penpots-recipe-of-ambassador-program/",
+    "date": "2026-07-28",
+    "channel": "social, email, events",
+    "message": "Launching a peer-to-peer Ambassador Program to foster an open-source design learning network.",
+    "signal": "300+ applications, 150-200K+ organic reach, 8+ events in three months, 600+ RSVPs, and 7.7% CTR.",
+    "strength": "Strong",
+    "confidence": "Low",
+    "why": "The program achieved significant organic engagement metrics, including high application volumes and event participation, within its first three months.",
+    "run_by": "",
+    "about_competitor": true,
+    "off_topic": false,
+    "stale": false,
+    "flags": [
+     "numbers not found in source: 300, 200K, 8, 600, 7.7%"
+    ],
+    "excluded": ""
+   },
+   {
+    "title": "Penpot MCP Server Beta Launch",
+    "url": "https://community.penpot.app/t/push-the-penpot-mcp-to-its-limits-join-the-beta-test/10363",
+    "date": "2026-02-25",
+    "channel": "social, community forum, email",
+    "message": "Connecting AI agents to Penpot via a new MCP server for design-to-code workflows.",
+    "signal": "Marketed as the first design tool to launch an MCP server.",
+    "strength": "Medium",
+    "confidence": "High",
+    "why": "The initiative effectively established Penpot as an early mover in integrating AI agents into design tools, though specific engagement numbers are less documented than the ambassador program.",
+    "run_by": "",
+    "about_competitor": true,
+    "off_topic": false,
+    "stale": false,
+    "flags": [],
+    "excluded": ""
+   },
+   {
+    "title": "Penpot and Neurons Lab AI Partnership",
+    "url": "https://neurons-lab.com/cases/penpot-elevating-the-worlds-first-open-source-design-platform-with-ai/",
+    "date": "2026-03-27",
+    "channel": "Webinar/Events/Press",
+    "message": "Partnership with Neurons Lab to integrate generative AI features like Design Co-Pilot and UX2Doc.",
+    "signal": "Public case study and documentation of deployed features.",
+    "strength": "Strong",
+    "confidence": "High",
+    "why": "It successfully delivered and deployed AI-powered features that enhance platform productivity and user efficiency.",
+    "run_by": "",
+    "about_competitor": true,
+    "off_topic": false,
+    "stale": false,
+    "flags": [],
+    "excluded": ""
+   }
+  ],
+  "Sketch": [
+   {
+    "title": "AI for Designers - Sketch MCP Server",
+    "url": "https://www.sketch.com/ai/",
+    "date": "",
+    "channel": "social",
+    "message": "Connect your favorite AI client to Sketch with no tokens, extra tiers, or add-ons.",
+    "signal": "Promotion via LinkedIn.",
+    "strength": "Medium",
+    "confidence": "High",
+    "why": "The campaign is actively promoted across social channels with a clear value proposition, though public engagement metrics are not provided.",
+    "run_by": "",
+    "about_competitor": true,
+    "off_topic": false,
+    "stale": false,
+    "flags": [
+     "date unknown"
+    ],
+    "excluded": ""
+   },
+   {
+    "title": "Florence (2026.3) Update",
+    "url": "https://www.sketch.com/blog/",
+    "date": "2026-08-26",
+    "channel": "social, blog",
+    "message": "Introducing Florence: new layout and sizing options for Stacks in Sketch.",
+    "signal": "High social engagement with multiple posts receiving 30-90+ reactions; detailed blog coverage.",
+    "strength": "Strong",
+    "confidence": "Low",
+    "why": "This is the latest major product update with sustained social promotion, clear user-driven messaging, and high audience interaction.",
+    "run_by": "",
+    "about_competitor": true,
+    "off_topic": false,
+    "stale": false,
+    "flags": [
+     "numbers not found in source: 30, 90"
+    ],
+    "excluded": ""
+   },
+   {
+    "title": "Figma Import Campaign",
+    "url": "https://skt.ch/egHbDoi",
+    "date": "",
+    "channel": "social",
+    "message": "Switch to Sketch easily by importing your Figma files directly.",
+    "signal": "40 reactions and 3 comments on LinkedIn.",
+    "strength": "Medium",
+    "confidence": "Low",
+    "why": "It is a targeted functional campaign addressing a specific competitor, supported by moderate social engagement.",
+    "run_by": "",
+    "about_competitor": true,
+    "off_topic": false,
+    "stale": false,
+    "flags": [
+     "date unknown",
+     "numbers not found in source: 40"
+    ],
+    "excluded": ""
+   }
+  ],
+  "UXPin": [
+   {
+    "title": "UXPin Forge Launch",
+    "url": "https://www.producthunt.com/products/uxpin",
+    "date": "",
+    "channel": "social (Product Hunt)",
+    "message": "Forge generates UI from your actual design system components rather than generic AI output.",
+    "signal": "Reached #4 on Product Hunt, 47 upvotes, and positive feedback regarding pain-point resolution.",
+    "strength": "Strong",
+    "confidence": "High",
+    "why": "The campaign successfully achieved top-tier placement on a major product launch platform and addressed specific user pain points with qualitative success.",
+    "run_by": "",
+    "about_competitor": true,
+    "off_topic": false,
+    "stale": false,
+    "flags": [
+     "date unknown"
+    ],
+    "excluded": ""
+   },
+   {
+    "title": "Launch of Forge AI Design Assistant",
+    "url": "https://uxpin.com/forge",
+    "date": "",
+    "channel": "webinar, social, product hunt, press release",
+    "message": "Forge is an AI design assistant that generates UI using your real React components instead of generic pixels.",
+    "signal": "Ranked #7 on Product Hunt; widespread social engagement and press release coverage.",
+    "strength": "Strong",
+    "confidence": "Low",
+    "why": "The campaign achieved significant visibility on Product Hunt and generated substantial ongoing discussion across social media and tech press.",
+    "run_by": "",
+    "about_competitor": true,
+    "off_topic": false,
+    "stale": false,
+    "flags": [
+     "date unknown",
+     "numbers not found in source: 7"
+    ],
+    "excluded": ""
+   },
+   {
+    "title": "Introduction of UXPin Wire",
+    "url": "https://updates.uxpin.com/2026-06-26-introducing-uxpin-wire",
+    "date": "2026-06-26",
+    "channel": "product updates, blog",
+    "message": "UXPin Wire turns designs into working product flows and exports them as React code.",
+    "signal": "Featured in recent company updates and documentation for June 2026.",
+    "strength": "Medium",
+    "confidence": "Low",
+    "why": "The campaign is consistently featured in recent product update communications, indicating sustained marketing focus.",
+    "run_by": "",
+    "about_competitor": true,
+    "off_topic": false,
+    "stale": false,
+    "flags": [
+     "numbers not found in source: 2026"
+    ],
+    "excluded": ""
+   },
+   {
+    "title": "DesignOps Webinar Partnership",
+    "url": "https://get.uxpin.com/webinar-resilient-designops-strategies/",
+    "date": "",
+    "channel": "webinar",
+    "message": "Building resilient DesignOps practices with UXPin and DesignOps Assembly.",
+    "signal": "Joint educational event featuring industry experts.",
+    "strength": "Medium",
+    "confidence": "High",
+    "why": "The campaign leverages a community-focused organization to engage a highly relevant professional audience.",
+    "run_by": "",
+    "about_competitor": true,
+    "off_topic": false,
+    "stale": false,
+    "flags": [
+     "date unknown"
+    ],
+    "excluded": ""
+   }
+  ],
+  "Webflow": [
+   {
+    "title": "Webflow Campaigns Product Launch",
+    "url": "https://webflow.com/blog/first-look-at-campaigns",
+    "date": "",
+    "channel": "Press, Social, Web (Product launch)",
+    "message": "Webflow Campaigns is a standalone AI-powered tool that lets marketers generate on-brand landing pages, ads, and analytics from a single brief.",
+    "signal": "Extensive coverage in industry press, social media announcements by company leadership, and a dedicated product launch event at Webflow Conf 2026.",
+    "strength": "Strong",
+    "confidence": "High",
+    "why": "The launch was supported by significant press, high-profile social media promotion by executives, and a major unveiling at the company's annual conference.",
+    "run_by": "",
+    "about_competitor": true,
+    "off_topic": false,
+    "stale": false,
+    "flags": [
+     "date unknown"
+    ],
+    "excluded": ""
+   },
+   {
+    "title": "AI Guy Campaign",
+    "url": "https://www.neuemotion.com/case-studies/webflow",
+    "date": "",
+    "channel": "social media",
+    "message": "Webflow uses humor to tackle the fear behind AI search via an \"AI Guy\" character.",
+    "signal": "Reached 28 million views with 4.5x increase in view time for skippable placements.",
+    "strength": "Strong",
+    "confidence": "High",
+    "why": "The campaign achieved significant verifiable engagement metrics including 28 million views.",
+    "run_by": "",
+    "about_competitor": true,
+    "off_topic": false,
+    "stale": false,
+    "flags": [
+     "date unknown"
+    ],
+    "excluded": ""
+   },
+   {
+    "title": "Impact Proximity Partners Webflow to Accelerate Enterprise Digital Transformation in the Middle East",
+    "url": "https://techafricanews.com/2026/01/14/impact-proximity-partners-webflow-to-accelerate-enterprise-digital-transformation-in-the-middle-east/",
+    "date": "2026-01-14",
+    "channel": "press",
+    "message": "Impact Proximity partners with Webflow to accelerate enterprise digital transformation in the Middle East.",
+    "signal": "Press coverage in TechAfrica News.",
+    "strength": "Medium",
+    "confidence": "High",
+    "why": "The partnership is supported by formal press coverage detailing regional impact and specific enterprise projects.",
+    "run_by": "",
+    "about_competitor": true,
+    "off_topic": false,
+    "stale": false,
+    "flags": [],
+    "excluded": ""
+   },
+   {
+    "title": "Highlight your work and attract new opportunities with Upwork and Webflow",
+    "url": "https://webflow.com/blog/webflow-upwork-partnership",
+    "date": "",
+    "channel": "blog",
+    "message": "Upwork and Webflow partner to help certified partners showcase their skills and attract new clients.",
+    "signal": "Blog post and partnership announcement.",
+    "strength": "Medium",
+    "confidence": "High",
+    "why": "This is a strategic partnership featured prominently on the company blog with clear goals for its user community.",
+    "run_by": "",
+    "about_competitor": true,
+    "off_topic": false,
+    "stale": false,
+    "flags": [
+     "date unknown"
+    ],
+    "excluded": ""
+   },
+   {
+    "title": "Showcase your design skills and land more projects with Dribbble and Webflow",
+    "url": "https://webflow.com/blog/webflow-dribbble-partnership",
+    "date": "",
+    "channel": "blog",
+    "message": "Dribbble and Webflow partner to launch an expert marketplace for designers to showcase work and find clients.",
+    "signal": "Blog post, expert marketplace launch.",
+    "strength": "Medium",
+    "confidence": "High",
+    "why": "The partnership resulted in a new tangible platform feature (Dribbble marketplace) for the user base.",
+    "run_by": "",
+    "about_competitor": true,
+    "off_topic": false,
+    "stale": false,
+    "flags": [
+     "date unknown"
+    ],
+    "excluded": ""
+   },
+   {
+    "title": "Webflow Expands Platform Capabilities with Adobe, Getty Images, OneTrust, and TransPerfect",
+    "url": "https://ca.finance.yahoo.com/news/webflow-expands-platform-capabilities-adobe-150000686.html",
+    "date": "",
+    "channel": "press",
+    "message": "Webflow expands platform capabilities through partnerships with Adobe, Getty Images, OneTrust, and TransPerfect.",
+    "signal": "Finance news coverage and product integration announcements.",
+    "strength": "Strong",
+    "confidence": "High",
+    "why": "This campaign involves multiple high-profile enterprise partners, strengthening the platform's core product ecosystem significantly.",
+    "run_by": "",
+    "about_competitor": true,
+    "off_topic": false,
+    "stale": false,
+    "flags": [
+     "date unknown"
+    ],
+    "excluded": ""
+   },
+   {
+    "title": "App Spotlight: Clay",
+    "url": "https://webflow.com/blog/app-spotlight-clay",
+    "date": "",
+    "channel": "blog",
+    "message": "Clay and Webflow partner to simplify content management and lead generation for marketing teams.",
+    "signal": "Blog post and app spotlight.",
+    "strength": "Medium",
+    "confidence": "High",
+    "why": "It highlights a specific product integration that targets the user pain point of lead generation and content management.",
+    "run_by": "",
+    "about_competitor": true,
+    "off_topic": false,
+    "stale": false,
+    "flags": [
+     "date unknown"
+    ],
+    "excluded": ""
+   },
+   {
+    "title": "Get certified as a Webflow expert on Contra",
+    "url": "https://contra.com/blog/get-certified-as-a-webflow-expert-on-contra",
+    "date": "",
+    "channel": "blog",
+    "message": "Contra and Webflow partner to launch a Webflow Expert Network.",
+    "signal": "Blog post.",
+    "strength": "Medium",
+    "confidence": "High",
+    "why": "It creates a specific network for their experts, increasing the platform's professional service reach.",
+    "run_by": "",
+    "about_competitor": true,
+    "off_topic": false,
+    "stale": false,
+    "flags": [
+     "date unknown"
+    ],
+    "excluded": ""
+   },
+   {
+    "title": "Agentic Web: Design, Automate, Convert with Webflow and Marketo",
+    "url": "https://business.adobe.com/summit/2026/sessions/agentic-web-design-automate-convert-with-webflow-m-os759.html",
+    "date": "",
+    "channel": "event",
+    "message": "Webflow and Adobe Marketo showcase how to design, automate, and convert at the Adobe Summit.",
+    "signal": "Adobe Summit session.",
+    "strength": "Medium",
+    "confidence": "High",
+    "why": "Integration with a major industry summit and a top-tier partner indicates strong collaboration efforts.",
+    "run_by": "",
+    "about_competitor": true,
+    "off_topic": false,
+    "stale": false,
+    "flags": [
+     "date unknown"
+    ],
+    "excluded": ""
+   }
+  ]
+ },
+ "recommendations": [
+  {
+   "title": "Launch Figma Ambassador Program",
+   "action": "Launch a formal ambassador program to empower and formalize Figma\u2019s existing community of power users and evangelists.",
+   "why": "While Figma has a strong community-led model, Penpot is actively leveraging an ambassador program to foster a dedicated peer-to-peer learning network, a gap Figma can fill by formalizing its own vibrant user base.",
+   "evidence": [
+    {
+     "competitor": "Penpot",
+     "title": "Penpot Ambassador Program Launch",
+     "url": "https://penpot.app/blog/the-spirit-of-open-source-penpots-recipe-of-ambassador-program/"
+    }
+   ],
+   "flags": []
+  },
+  {
+   "title": "Expand Design-to-Code Interoperability",
+   "action": "Develop and promote technical integrations or an open server model that allows developers and AI agents to connect directly into Figma for custom design-to-code workflows.",
+   "why": "Competitors like Penpot and Sketch are gaining traction by launching MCP (Model Context Protocol) servers to facilitate AI agent-driven design-to-code workflows, creating a technical gap Figma should address to remain central to the developer-designer handoff.",
+   "evidence": [
+    {
+     "competitor": "Penpot",
+     "title": "Penpot MCP Server Beta Launch",
+     "url": "https://community.penpot.app/t/push-the-penpot-mcp-to-its-limits-join-the-beta-test/10363"
+    },
+    {
+     "competitor": "Sketch",
+     "title": "AI for Designers - Sketch MCP Server",
+     "url": "https://www.sketch.com/ai/"
+    }
+   ],
+   "flags": []
+  },
+  {
+   "title": "Deep Dive into Human-in-the-Loop AI Workflows",
+   "action": "Create content series highlighting how professional teams specifically use Figma AI to automate repetitive tasks while retaining full human control over final design output.",
+   "why": "Competitors like UXPin are differentiating by emphasizing AI that works with actual design systems rather than generic output, so Figma should pivot from general 'AI' messaging to showcasing precision-focused workflows that emphasize human intent over automation.",
+   "evidence": [
+    {
+     "competitor": "UXPin",
+     "title": "UXPin Forge Launch",
+     "url": "https://www.producthunt.com/products/uxpin"
+    },
+    {
+     "competitor": "UXPin",
+     "title": "Launch of Forge AI Design Assistant",
+     "url": "https://uxpin.com/forge"
+    }
+   ],
+   "flags": []
+  },
+  {
+   "title": "Strategic Enterprise Integration Partnerships",
+   "action": "Partner with enterprise-grade platforms to integrate Figma into broader digital transformation and content management ecosystems.",
+   "why": "Webflow is actively expanding its platform capabilities through high-level partnerships with tools like Adobe, Getty, and OneTrust to become an essential hub, suggesting Figma should seek similar strategic alliances to solidify its place in the enterprise stack.",
+   "evidence": [
+    {
+     "competitor": "Webflow",
+     "title": "Webflow Expands Platform Capabilities with Adobe, Getty Images, OneTrust, and TransPerfect",
+     "url": "https://ca.finance.yahoo.com/news/webflow-expands-platform-capabilities-adobe-150000686.html"
+    },
+    {
+     "competitor": "Webflow",
+     "title": "Impact Proximity Partners Webflow to Accelerate Enterprise Digital Transformation in the Middle East",
+     "url": "https://techafricanews.com/2026/01/14/impact-proximity-partners-webflow-to-accelerate-enterprise-digital-transformation-in-the-middle-east/"
+    },
+    {
+     "competitor": "Webflow",
+     "title": "Agentic Web: Design, Automate, Convert with Webflow and Marketo",
+     "url": "https://business.adobe.com/summit/2026/sessions/agentic-web-design-automate-convert-with-webflow-m-os759.html"
+    }
+   ],
+   "flags": []
+  }
+ ],
+ "strong": [
+  {
+   "competitor": "Penpot",
+   "title": "Penpot and Neurons Lab AI Partnership",
+   "url": "https://neurons-lab.com/cases/penpot-elevating-the-worlds-first-open-source-design-platform-with-ai/",
+   "date": "2026-03-27",
+   "why": "It successfully delivered and deployed AI-powered features that enhance platform productivity and user efficiency."
+  },
+  {
+   "competitor": "UXPin",
+   "title": "UXPin Forge Launch",
+   "url": "https://www.producthunt.com/products/uxpin",
+   "date": "",
+   "why": "The campaign successfully achieved top-tier placement on a major product launch platform and addressed specific user pain points with qualitative success."
+  },
+  {
+   "competitor": "Webflow",
+   "title": "Webflow Campaigns Product Launch",
+   "url": "https://webflow.com/blog/first-look-at-campaigns",
+   "date": "",
+   "why": "The launch was supported by significant press, high-profile social media promotion by executives, and a major unveiling at the company's annual conference."
+  },
+  {
+   "competitor": "Webflow",
+   "title": "AI Guy Campaign",
+   "url": "https://www.neuemotion.com/case-studies/webflow",
+   "date": "",
+   "why": "The campaign achieved significant verifiable engagement metrics including 28 million views."
+  },
+  {
+   "competitor": "Webflow",
+   "title": "Webflow Expands Platform Capabilities with Adobe, Getty Images, OneTrust, and TransPerfect",
+   "url": "https://ca.finance.yahoo.com/news/webflow-expands-platform-capabilities-adobe-150000686.html",
+   "date": "",
+   "why": "This campaign involves multiple high-profile enterprise partners, strengthening the platform's core product ecosystem significantly."
+  }
+ ],
+ "top_channels": [
+  {
+   "channel": "social",
+   "count": 5
+  },
+  {
+   "channel": "blog",
+   "count": 4
+  },
+  {
+   "channel": "webinar",
+   "count": 2
+  }
+ ],
+ "excluded": [
+  {
+   "competitor": "Penpot",
+   "title": "Penpot and Tokens Studio Partnership",
+   "url": "https://www.businesswire.com/news/home/20230629787067/en/Penpot-Introduces-Innovative-New-Design-Collaboration-Tools-and-Partners-with-Tokens-Studio-to-Build-an-AI-Engine-for-Design-Systems",
+   "date": "2023-06-29",
+   "channel": "Webinar/Events",
+   "message": "Partnership with Tokens Studio to build native design token integration and an AI engine for design systems.",
+   "signal": "Announced at Penpot Fest with widespread industry coverage and follow-up product releases.",
+   "strength": "Strong",
+   "confidence": "High",
+   "why": "The partnership resulted in the successful delivery of native design tokens in Penpot and long-term collaboration on AI features.",
+   "run_by": "",
+   "about_competitor": true,
+   "off_topic": false,
+   "stale": true,
+   "flags": [
+    "old: published 2023-06-29 (40 months ago)"
+   ],
+   "excluded": "old: published 2023-06-29 (40 months ago)"
+  },
+  {
+   "competitor": "Penpot",
+   "title": "Penpot and Mediaweb Migration Partnership",
+   "url": "https://community.penpot.app/t/new-partnership-to-help-teams-migrate-to-penpot/8188",
+   "date": "2025-03-19",
+   "channel": "Events/Announcements",
+   "message": "Strategic partnership with Mediaweb to support large teams in migrating to Penpot.",
+   "signal": "Announcement via official Penpot Community forum.",
+   "strength": "Medium",
+   "confidence": "High",
+   "why": "It provides a clear value proposition for enterprise adoption by offering professional migration services.",
+   "run_by": "",
+   "about_competitor": true,
+   "off_topic": false,
+   "stale": true,
+   "flags": [
+    "old: published 2025-03-19 (19 months ago)"
+   ],
+   "excluded": "old: published 2025-03-19 (19 months ago)"
+  },
+  {
+   "competitor": "Penpot",
+   "title": "Penpot and IxDF Partnership",
+   "url": "https://penpot.app/penpotfest",
+   "date": "2024-10-17",
+   "channel": "Events/Press",
+   "message": "Long-term strategic partnership with Interaction Design Foundation (IxDF) to support design education.",
+   "signal": "Announced at Penpot Fest 2025 with exclusive discounts and masterclass giveaways.",
+   "strength": "Strong",
+   "confidence": "High",
+   "why": "This is a core go-to-market partnership that directly impacts user growth through community-exclusive benefits and educational collaboration.",
+   "run_by": "",
+   "about_competitor": true,
+   "off_topic": false,
+   "stale": true,
+   "flags": [
+    "old: published 2024-10-17 (24 months ago)"
+   ],
+   "excluded": "old: published 2024-10-17 (24 months ago)"
+  },
+  {
+   "competitor": "Sketch",
+   "title": "Sketch x Unsplash Integration",
+   "url": "https://unsplash.com/blog/no-more-sketchy-photos/",
+   "date": "2018-10-02",
+   "channel": "blog, product integration",
+   "message": "Users can now directly access and implement Unsplash photos into their designs within Sketch.",
+   "signal": "Featured on Unsplash blog and Sketch 52 update; cited as a new way to implement usable image assets.",
+   "strength": "Medium",
+   "confidence": "High",
+   "why": "The partnership provided a new, tangible feature for users, though long-term quantitative impact is not specified.",
+   "run_by": "",
+   "about_competitor": true,
+   "off_topic": false,
+   "stale": true,
+   "flags": [
+    "old: published 2018-10-02 (98 months ago)"
+   ],
+   "excluded": "old: published 2018-10-02 (98 months ago)"
+  },
+  {
+   "competitor": "Sketch",
+   "title": "Apple iOS UI kit in Sketch",
+   "url": "https://www.sketch.com/blog/prototyping-libraries-on-sketch-cloud-and-an-official-ios-ui-kit-in-sketch-49/",
+   "date": "2018-02-28",
+   "channel": "blog, product update",
+   "message": "Apple's official iOS 11 UI design resource is now available as a built-in Shared Library in Sketch.",
+   "signal": "Featured as a headline feature in Sketch 49 update announcement.",
+   "strength": "Strong",
+   "confidence": "High",
+   "why": "Integrating an official Apple UI kit directly into the software is a high-value, high-visibility partnership for design tool users.",
+   "run_by": "",
+   "about_competitor": true,
+   "off_topic": false,
+   "stale": true,
+   "flags": [
+    "old: published 2018-02-28 (105 months ago)"
+   ],
+   "excluded": "old: published 2018-02-28 (105 months ago)"
+  },
+  {
+   "competitor": "Sketch",
+   "title": "From Sketch to Screen Art Print Campaign",
+   "url": "https://www.sketch.com/blog/from-sketch-to-screen-how-blake-stevenson-created-our-ambassador-art-print/",
+   "date": "2019-10-14",
+   "channel": "blog, community outreach",
+   "message": "Commissioned artist Blake Stevenson to create an exclusive art print using Sketch to demonstrate the tool's flexibility.",
+   "signal": "Featured on Sketch blog with process documentation and limited-run distribution to ambassadors.",
+   "strength": "Medium",
+   "confidence": "High",
+   "why": "The campaign effectively showcased brand versatility to the design community, though it had limited, targeted reach.",
+   "run_by": "",
+   "about_competitor": true,
+   "off_topic": false,
+   "stale": true,
+   "flags": [
+    "old: published 2019-10-14 (85 months ago)"
+   ],
+   "excluded": "old: published 2019-10-14 (85 months ago)"
+  },
+  {
+   "competitor": "UXPin",
+   "title": "UXPin and SB C&S Distribution Partnership",
+   "url": "https://prtimes.jp/main/html/rd/p/000000612.000022656.html",
+   "date": "2023-07-06",
+   "channel": "press",
+   "message": "UXPin partners with SB C&S for Japanese market distribution.",
+   "signal": "Strategic partnership with a major Japanese distributor to leverage a 13,000-company sales network.",
+   "strength": "Strong",
+   "confidence": "High",
+   "why": "The partnership directly targets a large-scale enterprise distribution channel in Japan, significantly expanding market reach.",
+   "run_by": "",
+   "about_competitor": true,
+   "off_topic": false,
+   "stale": true,
+   "flags": [
+    "old: published 2023-07-06 (40 months ago)"
+   ],
+   "excluded": "old: published 2023-07-06 (40 months ago)"
+  },
+  {
+   "competitor": "UXPin",
+   "title": "Design Systems and DesignOps Research Report Partnership",
+   "url": "https://www.uxpin.com/studio/ebooks/designops-design-system-report/",
+   "date": "2023-02-14",
+   "channel": "webinar, press, content marketing",
+   "message": "UXPin and Whitespace research report on enterprise DesignOps.",
+   "signal": "Collaborative research project interviewing managers at 19 enterprise-level organizations.",
+   "strength": "Medium",
+   "confidence": "High",
+   "why": "It is a collaborative content effort that establishes authority in the DesignOps space through enterprise-level research.",
+   "run_by": "",
+   "about_competitor": true,
+   "off_topic": false,
+   "stale": true,
+   "flags": [
+    "old: published 2023-02-14 (45 months ago)"
+   ],
+   "excluded": "old: published 2023-02-14 (45 months ago)"
+  },
+  {
+   "competitor": "Webflow",
+   "title": "Webflow Donates $150,000 to Support Astro\u2019s Open Source Mission",
+   "url": "https://astro.build/blog/webflow-official-partner/",
+   "date": "2025-09-17",
+   "channel": "blog",
+   "message": "Webflow donates $150,000 to support Astro's open source mission.",
+   "signal": "Blog coverage on the partner's site.",
+   "strength": "Weak",
+   "confidence": "High",
+   "why": "While financially significant, it is a targeted sponsorship rather than a broad marketing campaign.",
+   "run_by": "",
+   "about_competitor": true,
+   "off_topic": false,
+   "stale": true,
+   "flags": [
+    "old: published 2025-09-17 (13 months ago)"
+   ],
+   "excluded": "old: published 2025-09-17 (13 months ago)"
+  }
+ ],
+ "checks": {
+  "max_age_days": 365,
+  "excluded_old": 9,
+  "excluded_off_topic": 0,
+  "undated": 13,
+  "unverified_numbers": 5
+ },
+ "method": [
+  "Fact checks: excluded 0 result(s) about a different company or product, and 9 older than 365 days; 13 have no known date. Numbers in a Signal/Why must appear in the search highlights or fetched page \u2014 5 campaign(s) had numbers that didn't, so their confidence is set to Low and they are left out of recommendations.",
+  "Recommendations: written by Exa's answer endpoint; each must cite campaigns from this scan by ID, and any without such evidence are dropped.",
+  "Own campaigns: the same searches found 7 recent campaign(s) by your company; recommendations are told not to repeat them.",
+  "Exa queries per competitor: recent <name> (<domain>) campaign launch, latest <name> (<domain>) marketing campaign, <name> (<domain>) brand partnership",
+  "Results per query: 10; grading: Exa.",
+  "Proof fetched for up to 5 campaign URLs per competitor.",
+  "Effectiveness is public-proxy only. No revenue/spend/ROI available via web search.",
+  "Trace: traces/37836d3b.jsonl (open in Phoenix/Langfuse if an exporter is enabled)."
+ ],
+ "own_campaigns": [
+  {
+   "title": "Figma and Sanrio Hello Kitty Collaboration",
+   "url": "https://www.figma.com/blog/figma-and-sanrio-celebrate-hello-kitty-and-friends/",
+   "date": "2026-11-02",
+   "channel": "social, digital, events (pop-up)",
+   "message": "Figma and Sanrio team up to bring 12 iconic characters into FigJam to make collaboration more playful.",
+   "signal": "Significant press coverage and global community engagement via meetups and integrated product features.",
+   "strength": "Strong",
+   "confidence": "High",
+   "why": "The campaign features extensive cross-channel integration, including product features, global community events, and physical activations in New York City.",
+   "run_by": "",
+   "about_competitor": true,
+   "off_topic": false,
+   "stale": false,
+   "flags": [],
+   "excluded": ""
+  },
+  {
+   "title": "Bureau of Nicknames (ANZBON)",
+   "url": "https://www.bandt.com.au/figma-launches-bureau-of-nicknames-campaign-to-celebrate-anzs-love-of-nicknaming/",
+   "date": "2026-03-12",
+   "channel": "social, narrative films, microsite",
+   "message": "Figma celebrates ANZ cultural traditions by creating a fictional Bureau of Nicknames to showcase product capabilities.",
+   "signal": "Press coverage and engagement through user submissions to the campaign microsite.",
+   "strength": "Medium",
+   "confidence": "High",
+   "why": "This was a targeted regional campaign that successfully demonstrated Figma's prototyping capabilities through a creative and localized narrative.",
+   "run_by": "",
+   "about_competitor": true,
+   "off_topic": false,
+   "stale": false,
+   "flags": [],
+   "excluded": ""
+  },
+  {
+   "title": "Push It Campaign",
+   "url": "https://www.itsnicethat.com/articles/figma-make-prompt-it-then-push-it-campaign-advertising-150126",
+   "date": "2026-01-15",
+   "channel": "billboards, digital ads, pop-up events",
+   "message": "Promoting Figma Make by emphasizing human creative intent and the tactile nature of design.",
+   "signal": "Wide-ranging presence across major cities and inclusion of community-made content.",
+   "strength": "Strong",
+   "confidence": "High",
+   "why": "The campaign achieved significant scale through global physical and digital placement while successfully articulating a complex product value proposition.",
+   "run_by": "",
+   "about_competitor": true,
+   "off_topic": false,
+   "stale": false,
+   "flags": [],
+   "excluded": ""
+  },
+  {
+   "title": "Figma AI Agent launch video featuring dance",
+   "url": "https://www.creativebloq.com/news/figma-finally-answers-the-question-of-what-design-feels-like-using-dance",
+   "date": "2026-10-15",
+   "channel": "video, social",
+   "message": "Using dance to capture the emotional experience and fluid process of design with Figma's AI agent.",
+   "signal": "Significant industry press coverage from design publications like Creative Bloq.",
+   "strength": "Medium",
+   "confidence": "High",
+   "why": "The campaign successfully generated press attention for its creative approach to positioning AI in the design process, though it lacked the broader multi-channel community integration of the Sanrio campaign.",
+   "run_by": "",
+   "about_competitor": true,
+   "off_topic": false,
+   "stale": false,
+   "flags": [],
+   "excluded": ""
+  },
+  {
+   "title": "The Figma Collection by Dinner Service",
+   "url": "https://dinnerserviceny.com/blogs/stories/figma-x-dinner-service-play-iteration-tools",
+   "date": "2026-06-18",
+   "channel": "Events (Config 2026) and web sales",
+   "message": "An ode to the joy of making without overthinking, celebrating the process of turning ideas into reality.",
+   "signal": "Limited collection release tied to annual design conference.",
+   "strength": "Medium",
+   "confidence": "High",
+   "why": "The partnership focused on tangible merchandise tied to Figma's annual conference, showing medium-scale community engagement.",
+   "run_by": "",
+   "about_competitor": true,
+   "off_topic": false,
+   "stale": false,
+   "flags": [],
+   "excluded": ""
+  },
+  {
+   "title": "Product Love at Scale with Contra",
+   "url": "https://contra.com/partnerships/figma-product-love/",
+   "date": "",
+   "channel": "Social media and web (Contra platform)",
+   "message": "Activating the community through a 7-day creative challenge to demonstrate product love at scale.",
+   "signal": "500K+ page interactions, 100K+ social engagements, 1,000+ organic product demos.",
+   "strength": "Strong",
+   "confidence": "Low",
+   "why": "High engagement metrics and organic reach from thousands of participants demonstrate significant campaign success.",
+   "run_by": "",
+   "about_competitor": true,
+   "off_topic": false,
+   "stale": false,
+   "flags": [
+    "date unknown",
+    "numbers not found in source: 500K, 100K, 1,000"
+   ],
+   "excluded": ""
+  },
+  {
+   "title": "An Intelligent Canvas for Infinite Creativity mural campaign",
+   "url": "https://www.overallmurals.com/work/figma/an-intelligent-canvas-for-infinite-creativity",
+   "date": "",
+   "channel": "Out-of-home (Murals) and social media (video)",
+   "message": "Proving that a tool built for infinite creativity can hold its own on a real city wall.",
+   "signal": "4M+ impressions in Brooklyn and San Francisco.",
+   "strength": "Strong",
+   "confidence": "Low",
+   "why": "The campaign generated significant public impressions in major urban centers and was supported by high-quality video content.",
+   "run_by": "",
+   "about_competitor": true,
+   "off_topic": false,
+   "stale": false,
+   "flags": [
+    "date unknown",
+    "numbers not found in source: 4M"
+   ],
+   "excluded": ""
+  }
+ ],
+ "mock": false
+}

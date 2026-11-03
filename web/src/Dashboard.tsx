@@ -200,7 +200,9 @@ export default function Dashboard({ report }: { report: SavedReport }) {
   }
 
   const recs = data.recommendations ?? [];
-  const flagged = campaigns.filter((c) => (c.flags ?? []).length > 0).length;
+  const hasFlag = (c: Campaign, start: string) => (c.flags ?? []).some((f) => f.startsWith(start));
+  const unverified = campaigns.filter((c) => hasFlag(c, "numbers")).length;
+  const undated = campaigns.filter((c) => hasFlag(c, "date unknown")).length;
   const strongCount = perCompetitor.reduce((n, p) => n + p.counts.Strong, 0);
   const phoenix = data.otel_trace_id && ["phoenix", "both"].includes(data.tracer ?? "");
 
@@ -219,10 +221,11 @@ export default function Dashboard({ report }: { report: SavedReport }) {
       </div>
 
       {/* Headline numbers */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         <Tile label="Campaigns analyzed" value={campaigns.length} />
         <Tile label="Strong" value={strongCount} note="public signals only, not ROI" />
-        <Tile label="Need a second look" value={flagged} note="unverified numbers or no date" />
+        <Tile label="Unverified numbers" value={unverified} note="not in the source; confidence set to Low" />
+        <Tile label="No known date" value={undated} note="kept; check the date yourself" />
         <Tile label="Excluded" value={data.excluded.length} note="too old or a different company" />
       </div>
 

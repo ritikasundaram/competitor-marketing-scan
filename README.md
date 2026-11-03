@@ -7,6 +7,14 @@ each linked to the campaigns behind it. Manual-run only, free-tier friendly.
 Effectiveness is **public proxies only** (press, social, SEO, partnerships), never ROI or spend.
 Every claim has a URL.
 
+![Dashboard overview: headline numbers and campaign strength by competitor](docs/screenshots/dashboard-overview.png)
+
+![Recommendations, each linked to the competitor campaigns behind it, next to the fact-check counts](docs/screenshots/recommendations.png)
+
+**Sample output:** a real scan for Figma against Penpot, Sketch, UXPin and Webflow, in
+[markdown](examples/sample-report-figma.md) and as the [dashboard data](examples/sample-report-figma.json).
+Page excerpts are removed from the sample; the links and ratings are as the scan produced them.
+
 ## Ways to run it
 - **Web app (recommended):** FastAPI backend + React frontend. Find rivals → untick non-rivals →
   live scan → report dashboard (headline numbers, strength chart, recommendations, fact checks,
