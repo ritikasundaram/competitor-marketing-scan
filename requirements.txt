@@ -1,0 +1,14 @@
+pyyaml>=6
+python-dotenv>=1
+# Real Exa runs (optional until you add a key):
+exa-py>=1.10
+# Optional OpenAI report synthesis (only used when OPENAI_API_KEY is set):
+# openai>=1
+# Web app backend:
+fastapi>=0.110
+uvicorn[standard]>=0.29
+# Phoenix tracing UI (local, free) + OTLP exporter for Phoenix/Langfuse:
+arize-phoenix>=8
+opentelemetry-exporter-otlp>=1.24
+# Optional OpenAI auto-instrumentation for Phoenix/Langfuse:
+# openinference-instrumentation-openai>=0.2
