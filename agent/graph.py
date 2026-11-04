@@ -5,6 +5,9 @@
       -> review_gaps -> (one more research round if gaps) -> profile_rival xN (parallel)
       -> plan_actions -> write_report
 
+Field focus: research -> event_followups (attendance + social engagement questions) -> research
+      -> profile_rival xN -> summarize_events (key findings, no action plan) -> write_report
+
 Each researcher is its own small graph that loops:
     search (Exa) -> read (Exa) -> answer (AI) -> check (rules) -> judge (AI) -> retry or stop
 """
@@ -26,7 +29,7 @@ from .checks import (RUBRIC, check_findings, clean_ids, norm_url, on_own_site, r
                      similar, unverified_numbers)
 from .llm import (LLMStop, exhausted, get_model, is_daily_quota, is_stuck, is_transient, llm_stop_reason,
                   mark_exhausted, model_chain)
-from .schemas import (ActionPlan, CompanyProfile, EventLeads, FollowUps, Judgment, QuestionPlan,
+from .schemas import (ActionPlan, CompanyProfile, EventLeads, FieldSummary, FollowUps, Judgment, QuestionPlan,
                       ResearchAnswer, RivalEventProfile, RivalProfile)
 from .tracing import KIND
 
@@ -67,6 +70,7 @@ class ScanState(TypedDict, total=False):
     reviews: Annotated[list, operator.add]
     profiles: Annotated[list, operator.add]
     plan: dict
+    summary: dict           # field focus: key findings about rivals' events
     report: dict
 
 
@@ -749,6 +753,56 @@ def plan_actions(state: ScanState) -> dict:
     return {"plan": result}
 
 
+# ---------- 7b. field focus: key findings instead of an action plan ----------
+
+SUMMARY_SYSTEM = (
+    "You are a field marketing research analyst. Summarize checked research on competitors' events as "
+    "findings, not advice: who runs the most events, which formats, cities and months they favor, which "
+    "events drew the most attendance or social engagement, and what is coming up. Every finding must cite "
+    "the source ids of the events behind it. Use only numbers the events state. Never recommend actions."
+)
+
+
+def after_profiles(state: ScanState) -> str:
+    return "summarize_events" if state["settings"].get("focus") == "field" else "plan_actions"
+
+
+def summarize_events(state: ScanState) -> dict:
+    s = state["settings"]
+    emit("step", step="summarize_events", message="Summarizing what the research found…")
+    lines = []
+    for p in state["profiles"]:
+        for e in p.get("events") or []:
+            facts = " · ".join(x for x in (p["rival"]["name"], e["kind"], e["date"], e["location"] or e["format"],
+                                           e["attendees"], e["engagement"]) if x and x != "unknown")
+            lines.append(f"- {e['name']} [{', '.join(e['source_ids'])}] {facts}")
+    prompt = (f"User's company: {who(state['company'])}. {state['profile']['summary']}\n"
+              f"Rivals: {', '.join(who(r) for r in state['rivals'])}\n\n"
+              f"Rival events (cite these ids):\n" + ("\n".join(lines) or "(none found)") +
+              "\n\nWrite a headline and 3 to 5 findings.")
+    event_ids = {i for p in state["profiles"] for e in p.get("events") or [] for i in e["source_ids"]}
+    evidence = " ".join(f"{x.get('title', '')} {x.get('snippet', '')} {x.get('text', '')}"
+                        for x in state["sources"].values())
+    out = ask("planner", FieldSummary, SUMMARY_SYSTEM, prompt, s)
+    with tracing.span("check.summary", KIND.GUARDRAIL, input={"findings": [f.model_dump() for f in out.findings]},
+                      **{"guardrail.rules": "each finding cites at least one checked rival event; "
+                                            "numbers in it appear in the sources"}) as sp:
+        kept, dropped = [], []
+        for f in out.findings:
+            ids = [i for i in clean_ids(f.source_ids) if i in event_ids]
+            if not ids:
+                dropped.append({"text": f.text, "reason": "cites no checked rival event"})
+                continue
+            missing = unverified_numbers(f.text, evidence)
+            flags = [f"numbers not found in sources: {', '.join(missing)}"] if missing else []
+            kept.append({"text": f.text, "source_ids": ids, "flags": flags})
+        sp.set("findings.kept", len(kept))
+        sp.set("findings.dropped", len(dropped))
+        sp.output({"kept": kept, "dropped": dropped})
+    summary = {"headline": out.headline, "findings": kept, "dropped": dropped}
+    return {"summary": summary, "plan": {"headline": out.headline, "actions": [], "dropped": []}}
+
+
 # ---------- 8. the report ----------
 
 def write_report(state: ScanState) -> dict:
@@ -769,6 +823,7 @@ def build_graph(checkpointer=None):
     g.add_node("event_followups", event_followups)
     g.add_node("profile_rival", profile_rival)
     g.add_node("plan_actions", plan_actions)
+    g.add_node("summarize_events", summarize_events)
     g.add_node("write_report", write_report)
     g.add_edge(START, "understand")
     g.add_edge("understand", "find_rivals")
@@ -779,7 +834,8 @@ def build_graph(checkpointer=None):
     g.add_conditional_edges("research", after_research, ["event_followups", "review_gaps"])
     g.add_conditional_edges("event_followups", after_review, ["research", "profile_rival"])
     g.add_conditional_edges("review_gaps", after_review, ["research", "profile_rival"])
-    g.add_edge("profile_rival", "plan_actions")
+    g.add_conditional_edges("profile_rival", after_profiles, ["plan_actions", "summarize_events"])
+    g.add_edge("summarize_events", "write_report")
     g.add_edge("plan_actions", "write_report")
     g.add_edge("write_report", END)
     return g.compile(checkpointer=checkpointer, name="competitor_scan")

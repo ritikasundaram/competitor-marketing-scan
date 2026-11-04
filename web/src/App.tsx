@@ -30,6 +30,7 @@ const STEPS: { node: string; label: string; optional?: boolean }[] = [
   { node: "event_followups", label: "Dig into each event" },
   { node: "profile_rival", label: "Profile each rival" },
   { node: "plan_actions", label: "Write the action plan" },
+  { node: "summarize_events", label: "Summarize the findings" },
   { node: "write_report", label: "Save the report" },
 ];
 
@@ -405,7 +406,8 @@ function RivalInputs({ rivals, setRivals }: { rivals: Rival[]; setRivals: (r: Ri
 }
 
 function Progress({ doneNodes, phase, approve, field }: { doneNodes: string[]; phase: Phase; approve: boolean; field: boolean }) {
-  const steps = STEPS.filter((s) => (!s.optional || approve) && s.node !== (field ? "review_gaps" : "event_followups"));
+  const skip = field ? ["review_gaps", "plan_actions"] : ["event_followups", "summarize_events"];
+  const steps = STEPS.filter((s) => (!s.optional || approve) && !skip.includes(s.node));
   const current = steps.find((s, i) => !steps.slice(i).some((x) => doneNodes.includes(x.node)) || (
     (s.node === "research" || s.node === "profile_rival") && !steps.slice(i + 1).some(
       (x) => doneNodes.includes(x.node) && !(s.node === "research" && x.node === "event_followups"))));

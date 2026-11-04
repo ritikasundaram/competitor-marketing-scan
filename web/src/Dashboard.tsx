@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { phoenixLink, type Action, type Answer, type Level, type ReportData, type RivalEvent, type SavedReport } from "./api";
+import { Attendance, FieldTiles, KeyFindings, Mix, parseCount, parseDate, PerRival, RivalEventProfiles, Timeline } from "./FieldResearch";
 import { Card, Chip, SourceLinks, StatusChip, StrengthPill, ThreatChip } from "./ui";
 
 const RUBRIC = [
@@ -76,34 +77,40 @@ export default function Dashboard({ report }: { report: SavedReport }) {
         </p>
       )}
 
-      <Card className="print-keep border-blue-200 bg-blue-50/40">
-        <p className="text-xs font-semibold uppercase tracking-wide text-blue-800">Headline</p>
-        <p className="mt-1 text-lg font-medium text-slate-900">{d.plan.headline}</p>
-      </Card>
-
       {field ? (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-          <Tile label="Rival events found" value={st.events ?? 0} />
-          <Tile label="With attendance figures" value={st.events_with_attendance ?? 0} note="each backed by a source" />
-          <Tile label="With social engagement" value={st.events_with_engagement ?? 0} note="from LinkedIn, X, YouTube…" />
-          <Tile label="Numbers removed" value={st.event_metrics_flagged ?? 0} note="no source showed them" />
-          <Tile label="Actions" value={st.actions} />
-        </div>
+        <>
+          <KeyFindings d={d} />
+          <FieldTiles d={d} />
+          <Timeline d={d} />
+          <div className="grid gap-4 lg:grid-cols-2">
+            <PerRival d={d} />
+            <Attendance d={d} />
+          </div>
+          <Mix d={d} />
+          <Events d={d} />
+          <RivalEventProfiles d={d} />
+          <Questions d={d} />
+          <Checks d={d} />
+        </>
       ) : (
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-        <Tile label="Actions" value={st.actions} />
-        <Tile label="Questions answered" value={`${st.answered}/${st.questions}`} note={st.retried ? `${st.retried} needed a 2nd search` : undefined} />
-        <Tile label="Findings kept" value={st.findings} note={`from ${st.sources} sources`} />
-        <Tile label="Removed by checks" value={removed} note={Object.entries(st.dropped).map(([k, n]) => `${n} ${k}`).join(", ") || undefined} />
-        <Tile label="Ratings lowered" value={st.lowered_by_rubric} note="to fit the rubric" />
-      </div>
+        <>
+          <Card className="print-keep border-blue-200 bg-blue-50/40">
+            <p className="text-xs font-semibold uppercase tracking-wide text-blue-800">Headline</p>
+            <p className="mt-1 text-lg font-medium text-slate-900">{d.plan.headline}</p>
+          </Card>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            <Tile label="Actions" value={st.actions} />
+            <Tile label="Questions answered" value={`${st.answered}/${st.questions}`} note={st.retried ? `${st.retried} needed a 2nd search` : undefined} />
+            <Tile label="Findings kept" value={st.findings} note={`from ${st.sources} sources`} />
+            <Tile label="Removed by checks" value={removed} note={Object.entries(st.dropped).map(([k, n]) => `${n} ${k}`).join(", ") || undefined} />
+            <Tile label="Ratings lowered" value={st.lowered_by_rubric} note="to fit the rubric" />
+          </div>
+          <ActionPlan d={d} />
+          <Rivals d={d} />
+          <Questions d={d} />
+          <Checks d={d} />
+        </>
       )}
-
-      <ActionPlan d={d} />
-      {field && <Events d={d} />}
-      <Rivals d={d} />
-      <Questions d={d} />
-      <Checks d={d} />
 
       <footer className="border-t border-slate-200 pt-4 text-xs text-slate-500">
         Phoenix session <span className="font-mono">{d.trace.session_id}</span>
@@ -338,6 +345,7 @@ function Checks({ d }: { d: ReportData }) {
     return [...m.entries()];
   }, [d]);
   const st = d.stats;
+  const field = d.focus === "field";
   return (
     <section className="grid gap-4 md:grid-cols-2">
       <Card>
@@ -346,8 +354,18 @@ function Checks({ d }: { d: ReportData }) {
         <ul className="mt-3 space-y-1 text-sm">
           <li>⚠ {st.flagged_numbers} findings had numbers the source doesn't show (confidence set to Low)</li>
           <li>⚠ {st.undated} findings have no known date</li>
-          <li>✕ {st.actions_dropped} actions dropped for citing no checked rival source</li>
-          <li>⚠ {st.actions_flagged ?? 0} actions use numbers the sources don't show</li>
+          {field ? (
+            <>
+              <li>✕ {st.events_dropped ?? 0} events left out (another company with a similar name, too old, or no checked source)</li>
+              <li>✕ {st.event_metrics_flagged ?? 0} attendance or engagement figures removed because no source shows them</li>
+              <li>✕ {d.summary?.dropped?.length ?? 0} key findings dropped for citing no checked rival event</li>
+            </>
+          ) : (
+            <>
+              <li>✕ {st.actions_dropped} actions dropped for citing no checked rival source</li>
+              <li>⚠ {st.actions_flagged ?? 0} actions use numbers the sources don't show</li>
+            </>
+          )}
         </ul>
         {groups.map(([k, items]) => (
           <details key={k} className="mt-3 text-sm">
@@ -359,7 +377,15 @@ function Checks({ d }: { d: ReportData }) {
             </ul>
           </details>
         ))}
-        {d.plan.dropped.length > 0 && (
+        {field && (d.summary?.dropped?.length ?? 0) > 0 && (
+          <details className="mt-3 text-sm">
+            <summary className="cursor-pointer font-medium">Dropped key findings ({d.summary!.dropped.length})</summary>
+            <ul className="mt-2 space-y-1 text-slate-600">
+              {d.summary!.dropped.map((x, i) => <li key={i}>{x.text} <span className="text-slate-400">({x.reason})</span></li>)}
+            </ul>
+          </details>
+        )}
+        {!field && d.plan.dropped.length > 0 && (
           <details className="mt-3 text-sm">
             <summary className="cursor-pointer font-medium">Dropped actions ({d.plan.dropped.length})</summary>
             <ul className="mt-2 space-y-1 text-slate-600">
@@ -392,8 +418,16 @@ function Checks({ d }: { d: ReportData }) {
 
 function Events({ d }: { d: ReportData }) {
   const [rival, setRival] = useState("all");
+  const [kind, setKind] = useState("all");
+  const [sort, setSort] = useState("date");
   const rows = d.profiles.flatMap((p) => (p.events ?? []).map((e) => ({ rival: p.rival.name, e })));
-  const list = rows.filter((r) => rival === "all" || r.rival === rival);
+  const kinds = [...new Set(rows.map((r) => r.e.kind))].sort();
+  const time = (e: RivalEvent) => parseDate(e.date)?.getTime() ?? -Infinity;
+  const size = (e: RivalEvent) => parseCount(e.attendees)?.hi ?? -1;
+  const list = rows
+    .filter((r) => (rival === "all" || r.rival === rival) && (kind === "all" || r.e.kind === kind))
+    .sort((a, b) => sort === "attendance" ? size(b.e) - size(a.e) || time(b.e) - time(a.e) : time(b.e) - time(a.e));
+  const select = "rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm";
   const where = (e: RivalEvent) => e.location || (e.format !== "unknown" ? e.format : "");
   const Metric = ({ value, flags, name }: { value: string; flags: string[]; name: string }) => {
     const flag = flags.find((f) => f.startsWith(name));
@@ -405,14 +439,23 @@ function Events({ d }: { d: ReportData }) {
     <section>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h3 className="text-lg font-semibold">Rival events</h3>
+          <h3 className="text-lg font-semibold">All rival events <span className="text-sm font-normal text-slate-500">({list.length} of {rows.length})</span></h3>
           <p className="text-xs text-slate-500">Every figure is quoted from a source; a figure no source showed is removed and marked ⚠.</p>
         </div>
-        <select aria-label="Filter events by rival" className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm print:hidden"
-          value={rival} onChange={(e) => setRival(e.target.value)}>
-          <option value="all">All rivals</option>
-          {d.profiles.map((p) => <option key={p.rival.name}>{p.rival.name}</option>)}
-        </select>
+        <div className="flex flex-wrap gap-2 print:hidden">
+          <select aria-label="Filter events by rival" className={select} value={rival} onChange={(e) => setRival(e.target.value)}>
+            <option value="all">All rivals</option>
+            {d.profiles.map((p) => <option key={p.rival.name}>{p.rival.name}</option>)}
+          </select>
+          <select aria-label="Filter events by type" className={select} value={kind} onChange={(e) => setKind(e.target.value)}>
+            <option value="all">All types</option>
+            {kinds.map((k) => <option key={k}>{k}</option>)}
+          </select>
+          <select aria-label="Sort events" className={select} value={sort} onChange={(e) => setSort(e.target.value)}>
+            <option value="date">Newest first</option>
+            <option value="attendance">Biggest turnout first</option>
+          </select>
+        </div>
       </div>
       {!list.length && <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">No events with checked sources.</p>}
       <div className="hidden overflow-hidden rounded-xl border border-slate-200 bg-white md:block print:block">

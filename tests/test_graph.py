@@ -184,10 +184,22 @@ class FieldMarketingTests(unittest.TestCase):
         self.assertIn("| Rival | Event | Type |", self.md)
         self.assertIn("10,000 attendees", self.md)  # listed under 'numbers removed'
 
-    def test_actions_still_cite_rival_events(self):
-        self.assertTrue(self.data["plan"]["actions"])
+    def test_key_findings_replace_the_action_plan(self):
+        self.assertEqual(self.data["plan"]["actions"], [])
+        self.assertNotIn("## Action plan", self.md)
+        self.assertIn("## Key findings", self.md)
+        summ = self.data["summary"]
+        self.assertTrue(summ["headline"])
+        self.assertEqual(self.data["plan"]["headline"], summ["headline"])
         ids = {i for p in self.data["profiles"] for e in p["events"] for i in e["source_ids"]}
-        self.assertTrue(all(set(a["source_ids"]) <= ids for a in self.data["plan"]["actions"]))
+        self.assertTrue(summ["findings"])
+        self.assertTrue(all(set(f["source_ids"]) <= ids for f in summ["findings"]))
+        # Planted mistakes: a finding citing a fake id is dropped; a made-up number is flagged.
+        self.assertEqual([d["reason"] for d in summ["dropped"]], ["cites no checked rival event"])
+        flagged = [f for f in summ["findings"] if f["flags"]]
+        self.assertEqual(len(flagged), 1)
+        self.assertIn("250", flagged[0]["flags"][0])
+        self.assertEqual(self.data["stats"]["key_findings"], len(summ["findings"]))
 
 
 class FollowUpTests(unittest.TestCase):

@@ -24,7 +24,8 @@ def respond(name: str, messages) -> dict:
     system, user = _text(messages)
     fn = {"CompanyProfile": _profile, "QuestionPlan": _plan, "ResearchAnswer": _answer,
           "Judgment": _judge, "FollowUps": _follow_ups, "RivalProfile": _rival,
-          "ActionPlan": _actions, "EventLeads": _event_leads, "RivalEventProfile": _rival_events}.get(name)
+          "ActionPlan": _actions, "EventLeads": _event_leads, "RivalEventProfile": _rival_events,
+          "FieldSummary": _field_summary}.get(name)
     return fn(system, user) if fn else {}
 
 
@@ -136,6 +137,18 @@ def _actions(system, user):
                  "horizon": "This half", "source_ids": ["M9"]})
     return {"headline": "Rivals are winning attention with partner launches; answer the strongest two first (mock).",
             "actions": acts}
+
+
+def _field_summary(system, user):
+    events = re.findall(r"^- (.+?) \[(.+?)\]", user, re.M)
+    found = [{"text": f"{name} is the most visible event in this group (mock).",
+              "source_ids": [x.strip() for x in ids.split(",")]} for name, ids in events[:3]]
+    if events:  # planted: a number no source shows, which the check should flag
+        found.append({"text": "Rival events grew 250% this year (mock).",
+                      "source_ids": [x.strip() for x in events[0][1].split(",")]})
+    found.append({"text": "Rivals favor online webinars (mock).", "source_ids": ["M9"]})  # planted: fake id
+    return {"headline": "Rivals lean on one flagship summit each, backed by smaller meetups (mock).",
+            "findings": found}
 
 
 def _event_leads(system, user):

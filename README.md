@@ -37,8 +37,12 @@ write_report ─ reports/<date>_scan_<run>.json (dashboard) + .md
    - an attendance or engagement figure no source shows is removed and marked ⚠
    - only a sourced attendance figure counts as a concrete result for a Strong rating
    - private individuals' names are scrubbed from the metrics
-4. The action plan is field-marketing specific: what to counter-program, attend, sponsor or speak
-   at, where and when.
+4. No action plan: `summarize_events` writes 3 to 5 key findings instead (who runs the most events,
+   which formats, cities and months, what drew the biggest turnout). Each must cite a checked rival
+   event, and numbers no source shows are flagged.
+5. The dashboard becomes a research view: key findings, an event calendar, events per rival,
+   sourced attendance, the event mix (types, formats, places), a filterable and sortable events
+   table, and a profile per rival (most recent event, next event, biggest stated turnout).
 
 **Who does what**
 - **Exa** does all the web research:

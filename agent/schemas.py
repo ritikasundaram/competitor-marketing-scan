@@ -105,6 +105,19 @@ class ActionPlan(BaseModel):
 
 # ---------- field marketing (events) ----------
 
+class KeyFinding(BaseModel):
+    text: str = Field(description="One research finding about rivals' events, one or two sentences. "
+                                  "A pattern across events, not advice.")
+    source_ids: List[str] = Field(description="Source ids of the events behind it (at least one).")
+
+
+class FieldSummary(BaseModel):
+    """What the research found about rivals' events. Findings only: no recommendations."""
+    headline: str = Field(description="The single most important finding, one sentence.")
+    findings: List[KeyFinding] = Field(description="3 to 5 findings: who is most active, which formats, "
+                                                   "cities and months, which events drew the most attendance "
+                                                   "or engagement.")
+
 EventKind = Literal["conference", "summit", "meetup", "roadshow", "webinar", "workshop", "hackathon",
                     "sponsorship", "trade show", "community", "other"]
 

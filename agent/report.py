@@ -50,6 +50,7 @@ def build_data(state: dict) -> dict:
         "sources": sources,
         "dropped": dropped,
         "reviews": state.get("reviews") or [],
+        "summary": state.get("summary") or {},
         "focus": settings.get("focus") or "general",
         "settings": {k: settings.get(k) for k in ("mock", "max_rivals", "questions_per_rival", "own_questions",
                                                    "max_attempts", "max_rounds", "max_age_days",
@@ -76,6 +77,8 @@ def build_data(state: dict) -> dict:
             "events_with_engagement": sum(1 for p in profiles for e in p.get("events") or [] if e.get("engagement")),
             "event_metrics_flagged": sum(len(e.get("flags") or []) for p in profiles for e in p.get("events") or []),
             "events_dropped": sum(len(p.get("dropped_events") or []) for p in profiles),
+            "key_findings": len((state.get("summary") or {}).get("findings") or []),
+            "key_findings_dropped": len((state.get("summary") or {}).get("dropped") or []),
         },
         "trace": {"session_id": state["run_id"],
                   "trace_id": format(span_ctx.trace_id, "032x") if span_ctx.is_valid else ""},
@@ -93,8 +96,17 @@ def to_markdown(d: dict) -> str:
            f"Run `{d['run_id']}` · {d['created'][:10]} · rivals: {', '.join(r['name'] for r in d['rivals'])}"
            + (" · **mock data**" if d["settings"].get("mock") else ""), ""]
     plan = d["plan"]
-    out += ["## Action plan", "", f"**{plan.get('headline', '')}**", ""]
-    for i, a in enumerate(plan.get("actions") or [], 1):
+    field = d.get("focus") == "field"
+    if field:
+        summ = d.get("summary") or {}
+        out += ["## Key findings", "", f"**{summ.get('headline') or plan.get('headline', '')}**", ""]
+        for f in summ.get("findings") or []:
+            out.append(f"- {f['text']} {_link(src, f['source_ids'])}")
+            out += [f"  - ⚠ {fl}" for fl in f.get("flags") or []]
+        out.append("")
+    else:
+        out += ["## Action plan", "", f"**{plan.get('headline', '')}**", ""]
+    for i, a in enumerate([] if field else plan.get("actions") or [], 1):
         out += [f"{i}. **{a['title']}** ({a['impact']} impact, {a['effort']} effort, {a['horizon'].lower()}, "
                 f"{a['channel']})", f"   - What: {a['what']}", f"   - Why: {a['why']}",
                 f"   - First step: {a['first_step']}", f"   - Evidence: {_link(src, a['source_ids'])}"]
@@ -147,8 +159,11 @@ def to_markdown(d: dict) -> str:
             + (", ".join(f"{n} {k}" for k, n in st["dropped"].items()) or "none") + ".",
             f"- {st['flagged_numbers']} findings had numbers the source doesn't show (confidence set to Low); "
             f"{st['undated']} have no date.",
-            f"- {st['lowered_by_rubric']} campaign ratings were lowered to fit the rubric; "
-            f"{st['actions_dropped']} actions were dropped for citing no checked rival source.", ""]
+            (f"- {st['lowered_by_rubric']} event ratings were lowered to fit the rubric; "
+             f"{st.get('key_findings_dropped', 0)} key findings were dropped for citing no checked rival event."
+             if field else
+             f"- {st['lowered_by_rubric']} campaign ratings were lowered to fit the rubric; "
+             f"{st['actions_dropped']} actions were dropped for citing no checked rival source."), ""]
     if d["dropped"]:
         out += ["### Removed findings", ""]
         out += [f"- {x.get('question_id', '')}: {x.get('claim', '')} ({x.get('reason', '')})" for x in d["dropped"]]

@@ -94,6 +94,9 @@ export type Action = {
   flags?: string[];
 };
 
+export type KeyFinding = { text: string; source_ids: string[]; flags: string[] };
+export type FieldSummary = { headline: string; findings: KeyFinding[]; dropped: { text: string; reason: string }[] };
+
 export type Dropped = {
   claim?: string;
   source_id?: string;
@@ -115,6 +118,7 @@ export type ReportData = {
   sources: Record<string, Source>;
   dropped: Dropped[];
   reviews: { round: number; gaps: string; added: number }[];
+  summary?: FieldSummary;
   settings: Record<string, unknown> & { mock?: boolean; max_age_days?: number };
   stats: {
     questions: number;
@@ -136,6 +140,9 @@ export type ReportData = {
     events_with_attendance?: number;
     events_with_engagement?: number;
     event_metrics_flagged?: number;
+    events_dropped?: number;
+    key_findings?: number;
+    key_findings_dropped?: number;
   };
   trace: { session_id: string; trace_id: string };
 };
