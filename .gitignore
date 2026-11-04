@@ -5,7 +5,6 @@ node_modules/
 web/dist/
 # Scan output (generated; may contain fetched page text)
 reports/*
-!reports/TEMPLATE.md
 traces/
 # Local machine files
 .DS_Store

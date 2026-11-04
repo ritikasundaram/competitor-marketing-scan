@@ -1,76 +1,128 @@
-# Competitor Marketing Scan (Exa + Phoenix/Langfuse)
+# Competitor Scan: an agent that researches your rivals with Exa
 
-Enter your company → it finds your competitors → searches the web for their recent marketing
-campaigns → rates each one on public signals → checks the facts → writes recommendations for you,
-each linked to the campaigns behind it. Manual-run only, free-tier friendly.
+Tell it your company. A LangGraph agent finds your competitors and breaks the job into small,
+answerable questions. Parallel researchers answer each one with Exa, check their own answers and
+retry with a better search when they fall short. The agent then reviews what's missing, profiles
+each rival and writes a ranked action plan. Every claim links to a page a researcher actually read.
 
-Effectiveness is **public proxies only** (press, social, SEO, partnerships), never ROI or spend.
-Every claim has a URL.
+Public signals only (press, partners, events, social): never revenue, spend or ROI.
 
-![Dashboard overview: headline numbers and campaign strength by competitor](docs/screenshots/dashboard-overview.png)
+## How the agent works
 
-![Recommendations, each linked to the competitor campaigns behind it, next to the fact-check counts](docs/screenshots/recommendations.png)
+```
+understand ─ reads your own site (Exa), notes what you already offer
+find_rivals ─ Exa search with an output schema → name, domain, reason
+confirm_rivals ⏸ you untick non-rivals or add one (always on)
+plan_questions ─ atomic questions: one company, one topic, one time window
+approve_questions ⏸ edit / remove / add questions (toggle, off by default)
+research ×N (in parallel) ─ each question gets its own researcher sub-graph:
+    search (Exa) → read (Exa) → answer (AI) → check (rules) → judge (AI)
+       ↑──────────── retry with a better search if not answered ─┘
+review_gaps ─ asks for up to 4 follow-up questions → one more research round
+profile_rival ×N (in parallel) ─ campaigns rated with the rubric, threat level
+plan_actions ─ ranked actions: what, why, first step, effort, impact, evidence
+write_report ─ reports/<date>_scan_<run>.json (dashboard) + .md
+```
 
-**Sample output:** a real scan for Figma against Penpot, Sketch, UXPin and Webflow, in
-[markdown](examples/sample-report-figma.md) and as the [dashboard data](examples/sample-report-figma.json).
-Page excerpts are removed from the sample; the links and ratings are as the scan produced them.
+**Who does what**
+- **Exa** does all the web research:
+  - `search` (type auto + highlights) finds pages by meaning
+  - `get_contents` reads full pages so claims can be checked
+  - a search with an `output_schema` finds rivals
+- **The AI** (Claude via [OpenCode inference](https://opencode.ai/docs/zen/)) plans, answers from the
+  numbered sources, judges its own answers, finds gaps and writes the plan.
+  - Planner: `claude-sonnet-5-5`
+  - Researchers: `claude-haiku-5-5`
+  - Change either in Settings or `.env`.
+- **Plain rules** (no AI) keep it honest:
+  - a finding must cite a page the researcher read (made-up ids are dropped)
+  - the page must be about that company: on its site, or naming it (look-alikes are dropped)
+  - findings older than `max_age_days` (default 365) are dropped; undated ones are flagged
+  - numbers the page doesn't show are flagged, and confidence drops to Low
+  - **rubric:**
+    - Strong = 2+ independent outside sources, or a concrete result a source states
+    - Medium = one outside source or own-channel engagement
+    - Weak = own announcement only
+  - the AI rates first; the rule lowers any rating the cited sources can't back
+  - every action must cite at least one checked rival source, or it's dropped (one retry)
+  - every search names the company's website, even the AI's rewritten retry searches
 
-## Ways to run it
-- **Web app (recommended):** FastAPI backend + React frontend. Find rivals → untick non-rivals →
-  live scan → report dashboard (headline numbers, strength chart, recommendations, fact checks,
-  filterable campaign table) with **Download .md** and **Print / save PDF**. Saved reports open the
-  same way; reports from before the dashboard existed open as text.
-- **Command line:** `python3 runner.py --company Figma` (see options below).
+## Phoenix tracing (OpenInference)
+
+- **Auto-traced:** `LangChainInstrumentor` records every graph step as a CHAIN span and every model
+  call as an LLM span, with prompt, output, model name and token counts.
+- **Hand-made spans:** Exa calls and checks get their proper span kind and nest under the step that
+  made them.
+
+| Span | Kind |
+|---|---|
+| `competitor_scan (start / resume)`: one per run segment | AGENT |
+| `researcher_agent Q3`: one per question, holding its steps | AGENT |
+| graph steps (`understand`, `plan_questions`, `search`, `judge`…) | CHAIN |
+| model calls | LLM |
+| `exa.search`, `exa.discover`: every result as a retrieval document | RETRIEVER |
+| `exa.read` (get_contents) | TOOL |
+| `check.findings`, `check.rubric`, `check.actions` | GUARDRAIL |
+| `judge.answer` (did the researcher answer it? with `eval.label`) | EVALUATOR |
+
+**Sessions:** a scan that pauses for you produces one trace per segment. All of them share
+`session.id` = the run id, so Phoenix's **Sessions** tab shows the whole scan. The dashboard links
+to its trace.
 
 ## Setup
-1. `pip install -r requirements.txt`
-2. `cp .env.example .env`, then add a free Exa key (no card): https://dashboard.exa.ai/api-keys → `EXA_API_KEY`
-3. Web app only: `npm install --prefix web`
-4. Phoenix (optional, local, free): start it and leave it running:
-   `env -u PHOENIX_COLLECTOR_ENDPOINT PHOENIX_PORT=6006 PHOENIX_HOST=127.0.0.1 python3 -c "import time, phoenix as px; px.launch_app(); [time.sleep(3600) for _ in iter(int, 1)]"` → http://localhost:6006
-5. Langfuse (optional): set `LANGFUSE_PUBLIC_KEY` + `LANGFUSE_SECRET_KEY` (and `LANGFUSE_OTEL_ENDPOINT` for self-host).
+
+1. `pip3 install -r requirements.txt` (Python 3.9+)
+2. `cp .env.example .env`, then add:
+   - `EXA_API_KEY`: free at https://dashboard.exa.ai/api-keys
+   - `OPENCODE_API_KEY`: OpenCode console, pay-as-you-go credits
+3. `npm install --prefix web`
+4. Phoenix (optional, local, free). Start it and leave it running:
+   `env -u PHOENIX_COLLECTOR_ENDPOINT PHOENIX_PORT=6006 PHOENIX_HOST=127.0.0.1 python3 -c "import time, phoenix as px; px.launch_app(); [time.sleep(3600) for _ in iter(int, 1)]"`
+   → http://localhost:6006
 
 ## Run
-- **Web app:** `python3 -m uvicorn backend.main:app --port 8000 --reload`, and in a second terminal
-  `npm run dev --prefix web` → http://localhost:5173. Tick **Mock mode** in Settings for a free test run.
+
+- **Web app:**
+  - `python3 -m uvicorn backend.main:app --port 8000 --reload`
+  - in a second terminal: `npm run dev --prefix web` → http://localhost:5173
+  - Tick **Mock mode** for a free run on a fake web with planted mistakes. It needs no keys.
 - **Command line:**
-  - `python3 runner.py --company Figma --domain figma.com --description "Collaborative design tool"`
-  - `--dry-run` free mock data · `--competitors "Canva,canva.com" ...` skip discovery
-  - `--no-grade` leave ratings TBD · `--no-proof` skip page fetches · `--no-self` skip scanning your own company
-  - `--max-age-days 365` exclude older campaigns (0 keeps all) · `--tracer phoenix|langfuse|both|none`
-  - `--synthesis template|openai|auto` · `--input inputs.yaml` read settings from yaml
-- **Tests (free, no network):** `python3 -m unittest discover -s tests`
+  - `python3 -m agent --company Figma --domain figma.com --goal "enterprise marketing"`
+  - `--mock` free fake run · `--yes` don't pause for rivals · `--approve-questions` review the list
+  - `--rivals "Sketch,sketch.com;Penpot,penpot.app"` skip discovery · `--no-trace` no Phoenix
+- **Tests** (free, offline; fake Exa + fake AI): `python3 -m unittest discover -s tests`
+  - the fact checks and rubric
+  - full runs with pauses, edits and retries
+  - the API
+  - span kinds, nesting and sessions
 
-## What a scan does
-1. **Discover** up to 4 direct competitors (skips discontinued products).
-2. **Search** 3 queries per competitor, naming its website (e.g. "Sketch (sketch.com)") so
-   look-alike companies don't creep in. Exa grades each campaign during the search: channel,
-   message, signal, Strength (Strong/Medium/Weak), Confidence, and whether it's really that company.
-3. **Fetch proof:** page text for the top URLs (campaigns making numeric claims first).
-4. **Fact checks:**
-   - campaigns older than `max_age_days` (default 365) are **excluded** (date from Exa, the page, or the URL)
-   - campaigns from a **different company or product** with a similar name are **excluded**
-   - numbers in a rating that don't appear in the source are **flagged** and confidence drops to Low
-   - campaigns with no known date are kept and flagged
-5. **Your own company:** the same searches on you, so recommendations don't repeat what you already do.
-6. **Recommendations:** Exa's answer endpoint writes 3–5. Each must cite scanned competitor
-   campaigns by ID; uncited ones are dropped. Mock runs show highlights instead.
-7. **Report:** `reports/<date>_competitor-scan_<run>.md` plus a `.json` copy for the dashboard.
-   Trace in `traces/<run>.jsonl` (and Phoenix/Langfuse if selected).
+## Code map
 
-## Reading a trace
-Each step is a span: `scan.run` → `exa.discover` → one `competitor` per rival (with `exa.search`,
-`exa.proof`, `grade`, `verify`) → your own company → `exa.answer`. Check `results`/`graded` on
-searches, `stale`/`off_topic`/`unverified_numbers` on `verify`, and `recommendations` on `exa.answer`.
-Phoenix shows kind "unknown" and $0 cost for these spans; that's expected (it only auto-fills those for LLM calls).
+| File | What it does |
+|---|---|
+| `agent/graph.py` | The LangGraph graph, the researcher sub-graph, prompts |
+| `agent/exa.py` | Exa calls (traced), error handling, the mock web |
+| `agent/llm.py` | Models via OpenCode; `MockChatModel` for mock runs |
+| `agent/checks.py` | Fact checks and the rubric (plain rules) |
+| `agent/schemas.py` | The forms each AI step fills in |
+| `agent/tracing.py` | Phoenix + OpenInference setup, hand-made spans, sessions |
+| `agent/run.py` | Runs the graph in segments (pause → resume), streams events |
+| `agent/report.py` | Writes the `.json` and `.md` report |
+| `backend/main.py` | FastAPI: start, resume, reports (keys stay server-side) |
+| `web/src/` | React dashboard: setup, live view, pauses, report |
 
 ## Costs
-- Exa free tier: $20 signup credit + $10/month.
-- Real scan (4 competitors + your company + recommendations) ≈ $0.06. Mock runs and tests are free.
-- OpenAI rewrite only if `OPENAI_API_KEY` is set (off by default; the template keeps every check visible).
-- Phoenix/Langfuse self-host: free.
+
+- **Exa:** a default run (4 rivals × 4 questions + 2 about you, up to 4 follow-ups) makes roughly
+  40–90 Exa calls (search + page reads), depending on how many questions need a second search.
+  Exa's free tier is $20 at signup + $10/month.
+- **AI:** one planner call per step, plus one or two researcher calls per question, billed per token
+  by OpenCode. Phoenix shows the token counts per call.
+- **Mock runs and tests:** free.
 
 ## Limitations
-- Recommendations know your marketing campaigns, not your product features, so they can suggest something you already offer.
-- Exa's answer endpoint can draw on its own web search for context; only its citations are guaranteed to come from the scan.
+
+- Paused scans live in server memory: restarting the backend forgets a scan that's waiting for you.
+- Python 3.9 pins LangGraph to 0.6.11.
+- Public signals aren't results: it can say a campaign got press, not whether it made money.
 - The app is light mode only.

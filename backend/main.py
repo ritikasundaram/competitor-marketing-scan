@@ -1,7 +1,11 @@
-"""FastAPI backend for the Competitor Marketing Scan web app.
+"""FastAPI backend for the agentic Competitor Scan.
 
-Serves the React frontend's API. EXA_API_KEY stays server-side (loaded from
-project-root .env) and is never sent to the browser.
+Keys (EXA_API_KEY, OPENCODE_API_KEY) stay server-side in .env; the browser never sees them.
+
+  POST /api/scans                 start a scan; streams events until it pauses or finishes
+  POST /api/scans/{run_id}/resume answer a pause (rivals or questions); streams again
+  GET  /api/reports               saved reports
+  GET  /api/reports/{run_id}      one report (dashboard data + markdown)
 
 Run:  uvicorn backend.main:app --port 8000
 """
@@ -11,9 +15,11 @@ import json
 import os
 import queue
 import re
-import sys
 import threading
+import sys
+import urllib.request
 from pathlib import Path
+from typing import Any, List, Optional
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
@@ -24,138 +30,141 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 load_dotenv(ROOT / ".env")
 
-from runner import discover_competitors, exa_stop_reason, scan_company  # noqa: E402
+from agent import report as report_mod  # noqa: E402
+from agent import tracing  # noqa: E402
+from agent.llm import model_name  # noqa: E402
+from agent.run import new_run_id, run_segment  # noqa: E402
 
-app = FastAPI(title="Competitor Marketing Scan")
+PHOENIX_URL = os.getenv("PHOENIX_URL", "http://localhost:6006")
+if os.getenv("PHOENIX_TRACING", "1") != "0":
+    tracing.setup_phoenix()
+
+app = FastAPI(title="Competitor Scan (agentic)")
+_RUN_ID = re.compile(r"[0-9a-f]{8}")
 
 
-def _exa_client():
-    key = os.getenv("EXA_API_KEY")
-    if not key:
-        raise HTTPException(400, "EXA_API_KEY not set on server (add it to .env) or use mock mode.")
-    from exa_py import Exa
-    return Exa(api_key=key)
+class Rival(BaseModel):
+    name: str
+    domain: str = ""
+    reason: str = ""
 
 
 class Company(BaseModel):
-    name: str
+    name: str = Field(min_length=1, max_length=80)
     domain: str = ""
     description: str = ""
+    goal: str = ""
+    rivals: List[Rival] = []
 
 
-class DiscoverBody(Company):
+class Settings(BaseModel):
     mock: bool = False
-    max_competitors: int = Field(4, ge=1, le=6)
-
-
-class ScanBody(BaseModel):
-    company: Company
-    competitors: list[dict] = []
-    mock: bool = False
-    grade: bool = True
-    tracer: str = "none"
-    max_competitors: int = Field(4, ge=1, le=6)
-    max_results_per_query: int = Field(10, ge=1, le=25)
-    max_queries_per_competitor: int = Field(3, ge=1, le=6)
-    fetch_proof: bool = True
-    max_proof_urls: int = Field(5, ge=0, le=10)
+    max_rivals: int = Field(4, ge=1, le=6)
+    questions_per_rival: int = Field(4, ge=1, le=8)
+    own_questions: int = Field(2, ge=0, le=4)
+    max_attempts: int = Field(2, ge=1, le=3)
+    max_rounds: int = Field(2, ge=1, le=3)
     max_age_days: int = Field(365, ge=0, le=3650)
-    scan_self: bool = True
-    synthesis: str = "auto"
+    approve_questions: bool = False
+    planner_model: str = ""
+    researcher_model: str = ""
+
+
+class StartBody(BaseModel):
+    company: Company
+    settings: Settings = Settings()
+
+
+class ResumeBody(BaseModel):
+    value: Any
+
+
+def _sse(events):
+    """Stream events as SSE. The scan runs start to finish on its own thread: tracing keeps
+    'current span' state per thread, and the server would otherwise hop threads between events."""
+    q: queue.Queue = queue.Queue()
+
+    def work():
+        try:
+            for e in events:
+                q.put(e)
+        except Exception as exc:  # noqa: BLE001
+            q.put({"event": "error", "message": f"Scan failed: {str(exc)[:300]}"})
+        finally:
+            q.put(None)
+
+    threading.Thread(target=work, daemon=True).start()
+
+    def gen():
+        while (e := q.get()) is not None:
+            yield f"data: {json.dumps(e, default=str)}\n\n"
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+def _phoenix_up() -> bool:
+    try:
+        urllib.request.urlopen(PHOENIX_URL, timeout=0.5)
+        return True
+    except Exception:  # noqa: BLE001
+        return False
 
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "has_key": bool(os.getenv("EXA_API_KEY"))}
+    return {"ok": True, "has_exa_key": bool(os.getenv("EXA_API_KEY")),
+            "has_ai_key": bool(os.getenv("OPENCODE_API_KEY")),
+            "models": {"planner": model_name("planner", {}), "researcher": model_name("researcher", {})},
+            "phoenix": {"url": PHOENIX_URL, "up": _phoenix_up()}}
 
 
-@app.post("/api/discover")
-def discover(body: DiscoverBody):
-    client = None if body.mock else _exa_client()
-    try:
-        found = discover_competitors(client, body.name, body.domain, body.description,
-                                     max_n=body.max_competitors, dry=body.mock)
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(502, exa_stop_reason(e) or f"Competitor discovery failed: {str(e)[:200]}")
-    return {"competitors": found}
+@app.post("/api/scans")
+def start_scan(body: StartBody):
+    s = body.settings.model_dump()
+    models = {k: v for k, v in (("planner", s.pop("planner_model")), ("researcher", s.pop("researcher_model"))) if v}
+    company = body.company.model_dump()
+    if not company["rivals"]:
+        company.pop("rivals")
+    run_id = new_run_id()
+    return _sse(run_segment(run_id, start={"company": company, "settings": {**s, "models": models}}))
 
 
-@app.post("/api/scan")
-def scan(body: ScanBody):
-    client = None if body.mock else _exa_client()
-    cfg = {"my_company": body.company.model_dump(), "competitors": body.competitors,
-           "max_results_per_query": body.max_results_per_query,
-           "max_queries_per_competitor": body.max_queries_per_competitor,
-           "max_competitors": body.max_competitors, "grade": body.grade,
-           "fetch_proof": body.fetch_proof, "max_proof_urls": body.max_proof_urls,
-           "max_age_days": body.max_age_days, "scan_self": body.scan_self,
-           "synthesis": body.synthesis}
-
-    def events():
-        events_q: queue.Queue = queue.Queue()
-        out_holder: dict = {}
-
-        def work():
-            try:
-                out_holder["out"] = scan_company(
-                    cfg, tracer_backend=body.tracer, client=client, dry=body.mock,
-                    on_step=lambda e, p: events_q.put({"event": e, **p}),
-                    confirm_fn=None,
-                )
-            except Exception as exc:  # noqa: BLE001
-                events_q.put({"event": "error", "message": str(exc)[:300]})
-            finally:
-                events_q.put(None)
-
-        threading.Thread(target=work, daemon=True).start()
-        while True:
-            item = events_q.get()
-            if item is None:
-                break
-            yield f"data: {json.dumps(item, default=str)}\n\n"
-
-        out = out_holder.get("out")
-        if out:
-            yield f"data: {json.dumps({'event': 'done', 'run_id': out['run_id'], 'flat': out['flat'], 'old': out['old'], 'report': out['report'], 'tracer': out['tracer'], 'otel_trace_id': out['otel_trace_id']}, default=str)}\n\n"
-
-    return StreamingResponse(events(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+@app.post("/api/scans/{run_id}/resume")
+def resume_scan(run_id: str, body: ResumeBody):
+    if not _RUN_ID.fullmatch(run_id):
+        raise HTTPException(404, "scan not found")
+    if not isinstance(body.value, list):
+        raise HTTPException(422, "value must be a list of rivals or questions")
+    return _sse(run_segment(run_id, resume=body.value))
 
 
-@app.get("/api/runs")
-def runs():
+def _reports_dir() -> Path:
+    return report_mod.REPORTS
+
+
+@app.get("/api/reports")
+def list_reports():
     items = []
-    for path in sorted((ROOT / "reports").glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True):
-        match = re.match(r"(\d{4}-\d{2}-\d{2})_competitor-scan_([0-9a-f]+)\.md$", path.name)
-        if not match:
+    for path in sorted(_reports_dir().glob("*_scan_*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+        try:
+            d = json.loads(path.read_text())
+        except ValueError:
             continue
-        head = path.read_text()[:400]
-        company = re.search(r"My company: \*\*(.+?)\*\*", head)
-        items.append({"run_id": match.group(2), "date": match.group(1), "filename": path.name,
-                      "company": company.group(1) if company else "",
-                      "has_data": path.with_suffix(".json").exists()})
-    return {"runs": items}
+        if d.get("version") != report_mod.VERSION:
+            continue
+        items.append({"run_id": d["run_id"], "created": d["created"], "company": d["company"]["name"],
+                      "rivals": [r["name"] for r in d["rivals"]], "mock": d["settings"].get("mock"),
+                      "actions": d["stats"]["actions"]})
+    return {"reports": items}
 
 
 @app.get("/api/reports/{run_id}")
-def report(run_id: str):
-    if not re.fullmatch(r"[0-9a-f]+", run_id):
+def get_report(run_id: str):
+    if not _RUN_ID.fullmatch(run_id):
         raise HTTPException(404, "report not found")
-    matches = sorted(ROOT.glob(f"reports/*_{run_id}.md"))
+    matches = sorted(_reports_dir().glob(f"*_scan_{run_id}.json"))
     if not matches:
         raise HTTPException(404, "report not found")
-    data_path = matches[0].with_suffix(".json")
-    data = json.loads(data_path.read_text()) if data_path.exists() else None
-    return {"run_id": run_id, "filename": matches[0].name,
-            "markdown": matches[0].read_text(), "data": data}
-
-
-@app.get("/api/traces/{run_id}")
-def trace(run_id: str):
-    if not re.fullmatch(r"[0-9a-f]+", run_id):
-        raise HTTPException(404, "trace not found")
-    path = ROOT / "traces" / f"{run_id}.jsonl"
-    if not path.exists():
-        raise HTTPException(404, "trace not found")
-    return {"run_id": run_id,
-            "spans": [json.loads(line) for line in path.read_text().splitlines() if line.strip()]}
+    md = matches[0].with_suffix(".md")
+    return {"data": json.loads(matches[0].read_text()), "markdown": md.read_text() if md.exists() else "",
+            "filename": md.name, "phoenix_url": PHOENIX_URL}
