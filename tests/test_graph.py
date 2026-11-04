@@ -187,6 +187,8 @@ class StopTests(unittest.TestCase):
         self.assertIn("Gemini rejected", llm_stop_reason(Exception("400 API key not valid. Please pass a valid key")))
         self.assertIn("OpenCode rejected", llm_stop_reason(Exception("Upstream request failed: Invalid credential")))
         self.assertIn("out of credits", llm_stop_reason(Exception("402 insufficient balance")))
+        self.assertIn("Gemini's prepaid credits", llm_stop_reason(Exception(
+            "402 Your prepayment credits are depleted. Please go to AI Studio at https://ai.studio/projects")))
         self.assertIn("isn't available", llm_stop_reason(Exception("404 NOT_FOUND models/gemini-x is not found")))
         self.assertIsNone(llm_stop_reason(Exception("503 high demand")))
         self.assertIn("quota", llm_stop_reason(Exception("429 RESOURCE_EXHAUSTED quota"), transient_exhausted=True))

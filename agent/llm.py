@@ -87,6 +87,9 @@ def llm_stop_reason(err: Exception, transient_exhausted: bool = False) -> Option
         return "Gemini rejected the API key. Check GEMINI_API_KEY in .env (aistudio.google.com/apikey)."
     if "401" in msg or "invalid credential" in low or "authentication" in low:
         return "OpenCode rejected the API key. Check OPENCODE_API_KEY in .env."
+    if "prepayment" in low or ("402" in msg and "ai studio" in low):
+        return ("Gemini's prepaid credits are used up for this API key's project. Top up in Google AI "
+                "Studio (Billing), or use a key from a project with credit.")
     if "402" in msg or "insufficient" in low or "credit" in low or "balance" in low:
         return "OpenCode account is out of credits. Top up in the OpenCode console."
     if ("not found" in low or "not_found" in low) and "model" in low:
