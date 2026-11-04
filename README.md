@@ -29,15 +29,16 @@ write_report ─ reports/<date>_scan_<run>.json (dashboard) + .md
   - `search` (type auto + highlights) finds pages by meaning
   - `get_contents` reads full pages so claims can be checked
   - a search with an `output_schema` finds rivals
-- **The AI** (Gemini by default) plans, answers from the numbered sources, judges its own answers,
-  finds gaps and writes the plan.
-  - Planner: `gemini-3.6-flash`
-  - Researchers: `gemini-3.5-flash-lite`
-  - Change either in Settings or `.env`.
-  - Calls go through one shared rate limiter (`GEMINI_RPM`, default 10/minute, for the free tier).
-    "Busy" and quota errors are retried with growing waits before the scan stops with a plain message.
-  - [OpenCode's gateway](https://opencode.ai/docs/zen/) (Claude) also works: set `OPENCODE_API_KEY`
-    and `AI_PROVIDER=opencode`.
+- **The AI** plans, answers from the numbered sources, judges its own answers, finds gaps and writes
+  the plan. The provider is whichever key is in `.env` (or `AI_PROVIDER`):
+  - **Claude Haiku 5.5** (`ANTHROPIC_API_KEY`): `claude-haiku-5-5` for the planner and researchers.
+  - **Gemini** (`GEMINI_API_KEY`): Flash models for the planner, Flash-Lite for researchers. Each role
+    has a list of fallbacks: a model that hits its daily free-tier limit is skipped for the day, and
+    calls share a rate limiter (`GEMINI_RPM`, default 10/minute).
+  - **Claude via OpenCode** (`OPENCODE_API_KEY`, `AI_PROVIDER=opencode`).
+  - Override models in Settings or with `PLANNER_MODEL` / `RESEARCHER_MODEL`.
+  - "Busy" errors are retried with growing waits. A bad key, no credit or a used-up quota stops the
+    scan with a plain message.
 - **Plain rules** (no AI) keep it honest:
   - a finding must cite a page the researcher read (made-up ids are dropped)
   - the page must be about that company: on its site, or naming it (look-alikes are dropped)
@@ -78,7 +79,8 @@ to its trace.
 1. `pip3 install -r requirements.txt` (Python 3.9+)
 2. `cp .env.example .env`, then add:
    - `EXA_API_KEY`: free at https://dashboard.exa.ai/api-keys
-   - `GEMINI_API_KEY`: free at https://aistudio.google.com/apikey
+   - an AI key: `ANTHROPIC_API_KEY` (Claude Haiku 5.5, https://console.anthropic.com) or
+     `GEMINI_API_KEY` (free at https://aistudio.google.com/apikey)
 3. `npm install --prefix web`
 4. Phoenix (optional, local, free). Start it and leave it running:
    `env -u PHOENIX_COLLECTOR_ENDPOINT PHOENIX_PORT=6006 PHOENIX_HOST=127.0.0.1 python3 -c "import time, phoenix as px; px.launch_app(); [time.sleep(3600) for _ in iter(int, 1)]"`
@@ -120,10 +122,10 @@ to its trace.
 - **Exa:** a default run (4 rivals × 4 questions + 2 about you, up to 4 follow-ups) makes roughly
   40–90 Exa calls (search + page reads), depending on how many questions need a second search.
   Exa's free tier is $20 at signup + $10/month.
-- **AI:** one planner call per step, plus one or two researcher calls per question. Gemini's free
-  tier covers a scan if you stay under its per-minute and per-day limits. A default run makes
-  roughly 40–60 AI calls, so at 10 a minute it takes about 5 minutes. Phoenix shows the token counts
-  per call.
+- **AI:** one planner call per step, plus one or two researcher calls per question: about 60 calls
+  for a default run (the last real run used 96k tokens). With Claude Haiku 5.5 that's billed per token
+  by Anthropic. Gemini's free tier covers it if you stay under its daily limits. Phoenix shows the
+  tokens for each call.
 - **Mock runs and tests:** free.
 
 ## Limitations

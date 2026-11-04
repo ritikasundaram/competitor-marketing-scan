@@ -32,7 +32,7 @@ load_dotenv(ROOT / ".env")
 
 from agent import report as report_mod  # noqa: E402
 from agent import tracing  # noqa: E402
-from agent.llm import has_key, model_name, provider  # noqa: E402
+from agent.llm import KEYS, NAMES, has_key, model_name, provider  # noqa: E402
 from agent.run import new_run_id, run_segment  # noqa: E402
 
 PHOENIX_URL = os.getenv("PHOENIX_URL", "http://localhost:6006")
@@ -113,7 +113,8 @@ def _phoenix_up() -> bool:
 @app.get("/api/health")
 def health():
     return {"ok": True, "has_exa_key": bool(os.getenv("EXA_API_KEY")),
-            "has_ai_key": has_key(), "ai_provider": provider(),
+            "has_ai_key": has_key(), "ai_provider": provider(), "ai_name": NAMES[provider()],
+            "ai_key_name": KEYS[provider()],
             "models": {"planner": model_name("planner", {}), "researcher": model_name("researcher", {})},
             "phoenix": {"url": PHOENIX_URL, "up": _phoenix_up()}}
 

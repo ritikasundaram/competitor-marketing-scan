@@ -174,7 +174,7 @@ class StopTests(unittest.TestCase):
         self.assertIn("Exa rejected the API key", events[-1]["message"])
 
     def test_missing_ai_key_stops_cleanly(self):
-        drop = ("OPENCODE_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "AI_PROVIDER")
+        drop = ("OPENCODE_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "ANTHROPIC_API_KEY", "AI_PROVIDER")
         env = {k: v for k, v in os.environ.items() if k not in drop}
         with umock.patch.dict(os.environ, env, clear=True), \
                 umock.patch.object(exa, "make_client", lambda mock: exa.MockExa()), TempReports():
@@ -185,8 +185,10 @@ class StopTests(unittest.TestCase):
     def test_ai_errors_become_plain_messages(self):
         from agent.llm import llm_stop_reason
         self.assertIn("Gemini rejected", llm_stop_reason(Exception("400 API key not valid. Please pass a valid key")))
-        self.assertIn("OpenCode rejected", llm_stop_reason(Exception("Upstream request failed: Invalid credential")))
-        self.assertIn("out of credits", llm_stop_reason(Exception("402 insufficient balance")))
+        with umock.patch.dict(os.environ, {"AI_PROVIDER": "opencode"}):
+            self.assertIn("OpenCode rejected", llm_stop_reason(Exception("Upstream request failed: Invalid credential")))
+        with umock.patch.dict(os.environ, {"AI_PROVIDER": "opencode"}):
+            self.assertIn("out of credits", llm_stop_reason(Exception("402 insufficient balance")))
         self.assertIn("Gemini's prepaid credits", llm_stop_reason(Exception(
             "402 Your prepayment credits are depleted. Please go to AI Studio at https://ai.studio/projects")))
         self.assertIn("isn't available", llm_stop_reason(Exception("404 NOT_FOUND models/gemini-x is not found")))
@@ -198,8 +200,8 @@ class StopTests(unittest.TestCase):
 class ProviderTests(unittest.TestCase):
     def env(self, **kw):
         base = {k: v for k, v in os.environ.items()
-                if k not in ("OPENCODE_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "AI_PROVIDER",
-                             "PLANNER_MODEL", "RESEARCHER_MODEL")}
+                if k not in ("OPENCODE_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "ANTHROPIC_API_KEY",
+                             "AI_PROVIDER", "PLANNER_MODEL", "RESEARCHER_MODEL")}
         return umock.patch.dict(os.environ, {**base, **kw}, clear=True)
 
     def test_gemini_is_picked_when_its_key_is_set(self):
@@ -213,6 +215,23 @@ class ProviderTests(unittest.TestCase):
             self.assertEqual(llm.provider(), "opencode")
         with self.env(GEMINI_API_KEY="x", AI_PROVIDER="opencode"):
             self.assertEqual(llm.provider(), "opencode")
+
+    def test_anthropic_key_wins_and_uses_haiku_for_both_roles(self):
+        from agent import llm
+        with self.env(ANTHROPIC_API_KEY="a", GEMINI_API_KEY="g"):
+            self.assertEqual(llm.provider(), "anthropic")
+            self.assertTrue(llm.has_key())
+            self.assertEqual(llm.model_chain("planner", {}), ["claude-haiku-5-5"])
+            self.assertEqual(llm.model_chain("researcher", {}), ["claude-haiku-5-5"])
+            m = llm.get_model("planner", {"mock": False})
+            self.assertEqual(type(m).__name__, "ChatAnthropic")
+            self.assertEqual(m.model, "claude-haiku-5-5")
+            self.assertNotIn("opencode", str(m.anthropic_api_url))
+            self.assertIn("Claude rejected", llm.llm_stop_reason(Exception("401 authentication_error invalid x-api-key")))
+            self.assertIn("console.anthropic.com", llm.llm_stop_reason(
+                Exception("400 Your credit balance is too low to access the Anthropic API")))
+        with self.env(GEMINI_API_KEY="g", AI_PROVIDER="anthropic"):
+            self.assertFalse(llm.has_key())
 
     def test_model_overrides_can_be_lists(self):
         from agent import llm

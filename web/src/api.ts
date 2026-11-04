@@ -127,7 +127,9 @@ export type ReportListItem = {
 export type Health = {
   has_exa_key: boolean;
   has_ai_key: boolean;
-  ai_provider: "gemini" | "opencode";
+  ai_provider: "anthropic" | "gemini" | "opencode";
+  ai_name: string;
+  ai_key_name: string;
   models: { planner: string; researcher: string };
   phoenix: { url: string; up: boolean };
 };

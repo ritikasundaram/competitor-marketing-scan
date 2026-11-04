@@ -1,10 +1,11 @@
-"""The AI models. Gemini (Google AI Studio key) by default; OpenCode's gateway also works.
+"""The AI models: Claude Haiku 5.5 (Anthropic API), Gemini, or Claude via OpenCode's gateway.
 
 Two roles:
 - planner: judgment-heavy steps (understand, break down, review gaps, profile, actions)
 - researcher: runs many times per scan (answer a question, check its own answer)
 
-Provider: AI_PROVIDER=gemini|opencode, else whichever key is set (Gemini first).
+Provider: AI_PROVIDER=anthropic|gemini|opencode, else whichever key is set
+(ANTHROPIC_API_KEY first, then GEMINI_API_KEY, then OPENCODE_API_KEY).
 Gemini calls share one rate limiter (GEMINI_RPM, default 10 a minute) so parallel
 researchers stay under free-tier limits; busy/quota errors are retried in graph.ask.
 
@@ -32,10 +33,12 @@ DEFAULT_MODELS = {
     "gemini": {"planner": ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.8-flash", "gemini-3.7-flash",
                            "gemini-3.5-flash-lite", "gemini-flash-lite-latest"],
                "researcher": ["gemini-3.5-flash-lite", "gemini-flash-lite-latest", "gemini-3.1-flash-lite"]},
+    "anthropic": {"planner": ["claude-haiku-5-5"], "researcher": ["claude-haiku-5-5"]},
     "opencode": {"planner": ["claude-sonnet-5-5"], "researcher": ["claude-haiku-5-5"]},
     "mock": {"planner": ["planner"], "researcher": ["researcher"]},
 }
-KEYS = {"gemini": "GEMINI_API_KEY", "opencode": "OPENCODE_API_KEY"}
+KEYS = {"anthropic": "ANTHROPIC_API_KEY", "gemini": "GEMINI_API_KEY", "opencode": "OPENCODE_API_KEY"}
+NAMES = {"anthropic": "Claude", "gemini": "Gemini", "opencode": "OpenCode"}
 
 
 class LLMStop(RuntimeError):
@@ -46,6 +49,8 @@ def provider() -> str:
     chosen = os.getenv("AI_PROVIDER", "").strip().lower()
     if chosen in KEYS:
         return chosen
+    if os.getenv("ANTHROPIC_API_KEY"):
+        return "anthropic"
     if os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"):
         return "gemini"
     if os.getenv("OPENCODE_API_KEY"):
@@ -58,7 +63,8 @@ def gemini_key() -> str:
 
 
 def has_key() -> bool:
-    return bool(gemini_key()) if provider() == "gemini" else bool(os.getenv("OPENCODE_API_KEY"))
+    prov = provider()
+    return bool(gemini_key()) if prov == "gemini" else bool(os.getenv(KEYS[prov]))
 
 
 def is_daily_quota(err: Exception) -> bool:
@@ -75,7 +81,7 @@ def is_stuck(err: Exception) -> bool:
 def is_transient(err: Exception) -> bool:
     """Worth waiting and retrying: busy servers, per-minute rate limits, timeouts."""
     low = str(err).lower()
-    return any(s in low for s in ("503", "unavailable", "high demand", "overloaded", "429",
+    return any(s in low for s in ("503", "529", "unavailable", "high demand", "overloaded", "429",
                                   "resource_exhausted", "rate limit", "quota", "deadline", "timeout",
                                   "500 internal", "502"))
 
@@ -85,19 +91,23 @@ def llm_stop_reason(err: Exception, transient_exhausted: bool = False) -> Option
     low = msg.lower()
     if "api key not valid" in low or "api_key_invalid" in low or "permission_denied" in low:
         return "Gemini rejected the API key. Check GEMINI_API_KEY in .env (aistudio.google.com/apikey)."
-    if "401" in msg or "invalid credential" in low or "authentication" in low:
-        return "OpenCode rejected the API key. Check OPENCODE_API_KEY in .env."
+    if "401" in msg or "invalid credential" in low or "authentication" in low or "invalid x-api-key" in low:
+        prov = provider()
+        return f"{NAMES.get(prov, 'The AI provider')} rejected the API key. Check {KEYS.get(prov, 'the key')} in .env."
     if "prepayment" in low or ("402" in msg and "ai studio" in low):
         return ("Gemini's prepaid credits are used up for this API key's project. Top up in Google AI "
                 "Studio (Billing), or use a key from a project with credit.")
+    if "credit balance is too low" in low or (provider() == "anthropic" and "credit" in low):
+        return "Your Anthropic credit balance is too low. Add credits at console.anthropic.com (Billing)."
     if "402" in msg or "insufficient" in low or "credit" in low or "balance" in low:
         return "OpenCode account is out of credits. Top up in the OpenCode console."
     if ("not found" in low or "not_found" in low) and "model" in low:
         return f"That AI model isn't available to this key: {msg[:160]}"
     if transient_exhausted:
         if "quota" in low or "429" in msg or "resource_exhausted" in low:
-            return ("The AI's quota or rate limit was reached (Gemini's free tier has per-minute and "
-                    "per-day limits). Wait a few minutes, lower GEMINI_RPM, or use fewer questions.")
+            return ("The AI's quota or rate limit was reached. Wait a few minutes, or use fewer questions"
+                    + (" (Gemini's free tier has per-minute and per-day limits; lower GEMINI_RPM)."
+                       if provider() == "gemini" else "."))
         return "The AI service is overloaded right now. Try again in a few minutes."
     return None
 
@@ -176,15 +186,16 @@ def get_model(role: str, settings: dict, mock_responder: Optional[Callable] = No
             max_retries=1,  # graph.ask does the patient retrying
             rate_limiter=_gemini_limiter(),
         )
-    key = os.getenv("OPENCODE_API_KEY")
+    key = os.getenv(KEYS[prov])
     if not key:
-        raise LLMStop("OPENCODE_API_KEY is not set. Add it to .env, or tick Mock mode.")
+        raise LLMStop(f"{KEYS[prov]} is not set. Add it to .env, or tick Mock mode.")
     from langchain_anthropic import ChatAnthropic
+    extra = {} if prov == "anthropic" else {"base_url": os.getenv("OPENCODE_BASE_URL", OPENCODE_BASE_URL)}
     return ChatAnthropic(
         model=model,
         api_key=key,
-        base_url=os.getenv("OPENCODE_BASE_URL", OPENCODE_BASE_URL),
-        max_tokens=4096 if role == "planner" else 2048,
+        **extra,
+        max_tokens=8192 if role == "planner" else 4096,
         temperature=0.2,
         timeout=120,
         max_retries=2,

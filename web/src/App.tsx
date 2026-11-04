@@ -292,7 +292,7 @@ function Setup(props: {
             <span className="text-sm text-amber-800">
               Add {!props.health?.has_exa_key && "EXA_API_KEY"}
               {!props.health?.has_exa_key && !props.health?.has_ai_key && " and "}
-              {!props.health?.has_ai_key && (props.health?.ai_provider === "opencode" ? "OPENCODE_API_KEY" : "GEMINI_API_KEY")} to .env, or tick Mock mode.
+              {!props.health?.has_ai_key && props.health?.ai_key_name} to .env, or tick Mock mode.
             </span>
           )}
         </div>
@@ -328,11 +328,11 @@ function Setup(props: {
           <div className="mt-3 space-y-3">
             <Field label="Planner" hint="judgment steps">
               <input className={input} value={s.planner_model} onChange={(e) => setS({ planner_model: e.target.value })}
-                placeholder={props.health?.models.planner ?? "gemini-3.6-flash"} />
+                placeholder={props.health?.models.planner ?? "claude-haiku-5-5"} />
             </Field>
             <Field label="Researchers" hint="run many times">
               <input className={input} value={s.researcher_model} onChange={(e) => setS({ researcher_model: e.target.value })}
-                placeholder={props.health?.models.researcher ?? "gemini-3.5-flash-lite"} />
+                placeholder={props.health?.models.researcher ?? "claude-haiku-5-5"} />
             </Field>
           </div>
         </details>
@@ -345,7 +345,7 @@ function Setup(props: {
 }
 
 function aiName(h: Health) {
-  return h.ai_provider === "opencode" ? "OpenCode" : "Gemini";
+  return h.ai_name;
 }
 
 function clamp(n: number, lo: number, hi: number) {
