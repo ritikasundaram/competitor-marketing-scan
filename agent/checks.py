@@ -121,7 +121,8 @@ def check_findings(findings: list, sources: dict, company: dict, max_age_days: i
         if not src:
             dropped.append({**f, "reason": f"cites {f.get('source_id') or 'nothing'}, which isn't a source it read"})
             continue
-        text = f"{src.get('title', '')} {src.get('text', '')}"
+        # Pages not fully read still have their search excerpt; check against everything we saw.
+        text = f"{src.get('title', '')} {src.get('snippet', '')} {src.get('text', '')}"
         if not on_own_site(src["url"], domain) and not mentions(text, name, domain):
             dropped.append({**f, "reason": f"source doesn't mention {name}"})
             continue
@@ -189,3 +190,17 @@ def clean_ids(ids) -> list:
             if part and part not in out:
                 out.append(part)
     return out
+
+
+def _words(text: str) -> set:
+    stop = {"the", "a", "an", "of", "in", "on", "for", "to", "and", "or", "did", "does", "what", "which",
+            "has", "have", "its", "it", "over", "past", "last", "months", "days", "year", "with", "by", "how"}
+    return {w for w in re.findall(r"[a-z0-9]+", (text or "").lower()) if w not in stop and len(w) > 2}
+
+
+def similar(a: str, b: str, threshold: float = 0.5) -> bool:
+    """Rough 'same question?' test: share of meaningful words in common."""
+    wa, wb = _words(a), _words(b)
+    if not wa or not wb:
+        return False
+    return len(wa & wb) / min(len(wa), len(wb)) >= threshold

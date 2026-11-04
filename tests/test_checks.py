@@ -70,6 +70,12 @@ class FindingTests(unittest.TestCase):
         _, dropped = self.check({"claim": "A pop-up", "source_id": "Q1-2"})
         self.assertEqual(dropped[0]["reason"], "source doesn't mention Sketch")
 
+    def test_search_excerpt_counts_when_page_wasnt_read(self):
+        self.sources["Q1-5"] = {"url": "https://adage.com/x", "title": "Brand campaign", "text": "",
+                                "snippet": "Sketch's new brand campaign targets teams.", "date": "2026-10-01"}
+        kept, dropped = self.check({"claim": "A brand campaign", "source_id": "Q1-5"})
+        self.assertEqual((len(kept), dropped), (1, []))
+
     def test_old_is_dropped_unless_age_limit_is_off(self):
         _, dropped = self.check({"claim": "Partnership", "source_id": "Q1-3"})
         self.assertTrue(dropped[0]["reason"].startswith("old: published 2023-06-29"))
@@ -101,6 +107,13 @@ class RubricTests(unittest.TestCase):
     def test_never_raised_and_odd_values_become_weak(self):
         self.assertEqual(checks.rubric_cap("Weak", ["B", "C"], self.SOURCES, "sketch.com", True), ("Weak", ""))
         self.assertEqual(checks.rubric_cap("great", [], self.SOURCES, "sketch.com", False)[0], "Weak")
+
+    def test_similar_questions(self):
+        self.assertTrue(checks.similar(
+            "What changes to pricing, packaging, or enterprise tiers did Axure RP introduce over the past year?",
+            "What new packaging, enterprise licensing, or pricing tiers did Axure RP introduce for engineering teams?"))
+        self.assertFalse(checks.similar("Which customer stories has Axure published?",
+                                        "What pricing changes did Axure make?"))
 
     def test_ids_are_cleaned(self):
         self.assertEqual(checks.clean_ids(["C3,", " q2-1 ", "C3", "[Q4-2]; Q5-1"]), ["C3", "Q2-1", "Q4-2", "Q5-1"])

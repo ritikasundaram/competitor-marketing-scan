@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import datetime
 import operator
+import time
 from typing import Annotated, Optional, TypedDict
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -20,8 +21,10 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send, interrupt
 
 from . import exa, mock, tracing
-from .checks import RUBRIC, check_findings, clean_ids, on_own_site, rubric_cap, unverified_numbers
-from .llm import LLMStop, get_model, llm_stop_reason
+from .checks import (RUBRIC, check_findings, clean_ids, norm_url, on_own_site, rubric_cap, similar,
+                     unverified_numbers)
+from .llm import (LLMStop, exhausted, get_model, is_daily_quota, is_stuck, is_transient, llm_stop_reason,
+                  mark_exhausted, model_chain)
 from .schemas import (ActionPlan, CompanyProfile, FollowUps, Judgment, QuestionPlan, ResearchAnswer,
                       RivalProfile)
 from .tracing import KIND
@@ -77,19 +80,45 @@ def emit(event: str, **data) -> None:
 
 
 def ask(role: str, schema, system: str, user: str, settings: dict):
-    """One structured AI call. Auto-traced as an LLM span by OpenInference."""
-    # Forced tool call, parsed here (not by a LangChain parser) so Phoenix shows one clean LLM span.
-    model = get_model(role, settings, mock_responder=mock.respond).bind_tools([schema], tool_choice=schema.__name__)
+    """One structured AI call. Auto-traced as an LLM span by OpenInference.
+
+    Tries the role's models in order: a model that hits its daily free-tier limit is skipped
+    for the rest of the day; busy errors are retried with waits, then the next model is tried.
+    """
     messages = [SystemMessage(content=system), HumanMessage(content=user)]
+    chain = [m for m in model_chain(role, settings) if not exhausted(m)]
+    if not chain:
+        raise LLMStop("Every Gemini model for this step has hit its daily free-tier limit. "
+                      "Try again later (limits reset daily) or add billing in Google AI Studio.")
+    last_error: Exception | None = None
+    for i, name in enumerate(chain):
+        # Forced tool call, parsed here (not by a LangChain parser) so Phoenix shows one clean LLM span.
+        model = get_model(role, settings, mock_responder=mock.respond, model=name).bind_tools(
+            [schema], tool_choice=schema.__name__)
+        try:
+            return _structured(model, schema, messages)
+        except _TryNextModel as e:
+            last_error = e.cause
+            if is_daily_quota(e.cause):
+                mark_exhausted(name, e.cause)
+            nxt = chain[i + 1] if i + 1 < len(chain) else None
+            if nxt:
+                why = ("hit its daily free limit" if is_daily_quota(e.cause)
+                       else "timed out" if is_stuck(e.cause) else "is busy")
+                emit("notice", message=f"{name} {why}; switching to {nxt}…")
+    raise LLMStop(llm_stop_reason(last_error, transient_exhausted=True) if last_error else "The AI failed.")
+
+
+class _TryNextModel(Exception):
+    def __init__(self, cause: Exception):
+        super().__init__(str(cause))
+        self.cause = cause
+
+
+def _structured(model, schema, messages):
     last_error = None
     for _ in range(2):
-        try:
-            msg = model.invoke(messages)
-        except Exception as e:  # noqa: BLE001
-            reason = llm_stop_reason(e)
-            if reason:
-                raise LLMStop(reason) from e
-            raise
+        msg = _invoke_patiently(model, messages)
         calls = [c for c in (getattr(msg, "tool_calls", None) or []) if c["name"] == schema.__name__]
         try:
             return schema.model_validate(calls[0]["args"])
@@ -97,6 +126,27 @@ def ask(role: str, schema, system: str, user: str, settings: dict):
             last_error = e
             messages = messages + [HumanMessage(content=f"Answer by calling {schema.__name__} with valid fields.")]
     raise RuntimeError(f"The model didn't return a valid {schema.__name__}: {last_error}")
+
+
+RETRY_WAITS = (5, 15, 30)  # seconds; busy servers and per-minute quotas usually clear
+
+
+def _invoke_patiently(model, messages):
+    for attempt in range(len(RETRY_WAITS) + 1):
+        try:
+            return model.invoke(messages)
+        except Exception as e:  # noqa: BLE001
+            reason = llm_stop_reason(e)
+            if reason:
+                raise LLMStop(reason) from e
+            if is_daily_quota(e) or is_stuck(e):
+                raise _TryNextModel(e) from e
+            if not is_transient(e):
+                raise
+            if attempt == len(RETRY_WAITS):
+                raise _TryNextModel(e) from e
+            emit("notice", message=f"The AI is busy; retrying in {RETRY_WAITS[attempt]}s…")
+            time.sleep(RETRY_WAITS[attempt])
 
 
 def who(c: dict) -> str:
@@ -323,7 +373,8 @@ def r_judge(st: ResearchState) -> dict:
             lines = "\n".join(f"- {f['claim']}" for f in st["kept"])
             j = ask("researcher", Judgment,
                     "Judge strictly whether these checked findings answer the question. If not, say what's "
-                    "missing and write a different search to find it.",
+                    "missing and write a different search to find it. Also write the answer again using "
+                    "only these findings (some earlier findings failed fact checks and must not appear).",
                     f"Question about {who(q)}: {q['question']}\nAttempt: {st['attempt']}\n"
                     f"Findings:\n{lines}\nSearches tried: {st['queries']}", s).model_dump()
         sp.set("eval.answered", bool(j["answered"]))
@@ -376,6 +427,12 @@ def research(payload: dict) -> dict:
             out = chunk
     j = out.get("judgment") or {}
     status = "answered" if j.get("answered") else ("partial" if out.get("kept") else "unanswered")
+    # The first answer was written before the checks; when anything was removed, use the
+    # judge's rewrite, which only saw the findings that passed.
+    if out.get("dropped") and out.get("kept"):
+        out["answer"] = j.get("answer") or " ".join(f["claim"] for f in out["kept"])
+    elif not out.get("kept"):
+        out["answer"] = out.get("answer") if not out.get("dropped") else "Nothing that passed the checks."
     cited = {f["source_id"] for f in out.get("kept") or []}
     sources = {d["id"]: {**d, "company": q["company"], "question_id": q["id"]}
                for d in out["docs"] if d["id"] in cited}
@@ -395,13 +452,21 @@ def review_gaps(state: ScanState) -> dict:
     emit("step", step="review_gaps", message="Checking for gaps in what was found…")
     fu = ask("planner", FollowUps,
              "You review competitor research for gaps that matter to the user's goal. Only ask follow-ups "
-             "that would change the advice: unanswered questions worth rephrasing, or a missing angle on a "
-             "rival. Name companies exactly as given and include their domain in the search query.",
+             "that would change the advice, usually a missing angle on a rival. Don't repeat a question that "
+             "already failed after two searches unless you take a clearly different angle (e.g. press "
+             "coverage instead of the company's own blog). Fewer, better questions beat using the full "
+             "allowance. Name companies exactly as given and include their domain in the search query.",
              f"User's company: {who(state['company'])}. Goal: {state['profile']['focus']}\n"
              f"Rivals: {', '.join(who(r) for r in state['rivals'])}\n"
              f"Allowed follow-up questions: up to {s['max_follow_ups']}.\n\n"
              f"Research so far:\n{fmt_findings(state['answers'])}", s)
-    new = _number(fu.questions[: s["max_follow_ups"]], state, rnd + 1)
+    # Don't spend a round re-asking what already failed: skip follow-ups that closely match an
+    # unanswered question about the same company (the prompt asks for this; this rule makes sure).
+    failed = [a["question"] for a in state["answers"] if a["status"] == "unanswered"]
+    fresh = [q for q in fu.questions
+             if not any(q.company.lower() == f["company"].lower() and similar(q.question, f["question"])
+                        for f in failed)]
+    new = _number(fresh[: s["max_follow_ups"]], state, rnd + 1)
     if new:
         emit("questions", questions=new, follow_up=True, gaps=fu.gaps)
     return {"questions": state["questions"] + new, "round": rnd + 1 if new else rnd,
@@ -440,7 +505,11 @@ def profile_rival(payload: dict) -> dict:
                                                              "campaigns": [c.model_dump() for c in prof.campaigns]},
                       **{"guardrail.rules": "citations exist; rating held to the rubric by source count"}) as sp:
         for c in prof.campaigns:
-            ids = [i for i in clean_ids(c.source_ids) if i in sources]
+            ids, urls = [], set()
+            for i in clean_ids(c.source_ids):  # one id per page: two ids can point at the same URL
+                if i in sources and norm_url(sources[i]["url"]) not in urls:
+                    ids.append(i)
+                    urls.add(norm_url(sources[i]["url"]))
             if not ids:
                 continue
             claims = " ".join(f["claim"] for a in st["answers"] for f in a["findings"]

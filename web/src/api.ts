@@ -127,6 +127,7 @@ export type ReportListItem = {
 export type Health = {
   has_exa_key: boolean;
   has_ai_key: boolean;
+  ai_provider: "gemini" | "opencode";
   models: { planner: string; researcher: string };
   phoenix: { url: string; up: boolean };
 };
@@ -158,6 +159,7 @@ export type ScanEvent =
       findings?: number;
     }
   | { event: "rival"; name: string; status: "profiling" | "done" }
+  | { event: "notice"; message: string }
   | { event: "interrupt"; run_id: string; kind: "confirm_rivals"; rivals: Rival[]; trace_id: string }
   | { event: "interrupt"; run_id: string; kind: "approve_questions"; questions: Question[]; trace_id: string }
   | { event: "done"; run_id: string; trace_id: string; report: { run_id: string; file: string } }

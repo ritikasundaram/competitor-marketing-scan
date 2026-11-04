@@ -29,11 +29,15 @@ write_report ─ reports/<date>_scan_<run>.json (dashboard) + .md
   - `search` (type auto + highlights) finds pages by meaning
   - `get_contents` reads full pages so claims can be checked
   - a search with an `output_schema` finds rivals
-- **The AI** (Claude via [OpenCode inference](https://opencode.ai/docs/zen/)) plans, answers from the
-  numbered sources, judges its own answers, finds gaps and writes the plan.
-  - Planner: `claude-sonnet-5-5`
-  - Researchers: `claude-haiku-5-5`
+- **The AI** (Gemini by default) plans, answers from the numbered sources, judges its own answers,
+  finds gaps and writes the plan.
+  - Planner: `gemini-3.6-flash`
+  - Researchers: `gemini-3.5-flash-lite`
   - Change either in Settings or `.env`.
+  - Calls go through one shared rate limiter (`GEMINI_RPM`, default 10/minute, for the free tier).
+    "Busy" and quota errors are retried with growing waits before the scan stops with a plain message.
+  - [OpenCode's gateway](https://opencode.ai/docs/zen/) (Claude) also works: set `OPENCODE_API_KEY`
+    and `AI_PROVIDER=opencode`.
 - **Plain rules** (no AI) keep it honest:
   - a finding must cite a page the researcher read (made-up ids are dropped)
   - the page must be about that company: on its site, or naming it (look-alikes are dropped)
@@ -74,7 +78,7 @@ to its trace.
 1. `pip3 install -r requirements.txt` (Python 3.9+)
 2. `cp .env.example .env`, then add:
    - `EXA_API_KEY`: free at https://dashboard.exa.ai/api-keys
-   - `OPENCODE_API_KEY`: OpenCode console, pay-as-you-go credits
+   - `GEMINI_API_KEY`: free at https://aistudio.google.com/apikey
 3. `npm install --prefix web`
 4. Phoenix (optional, local, free). Start it and leave it running:
    `env -u PHOENIX_COLLECTOR_ENDPOINT PHOENIX_PORT=6006 PHOENIX_HOST=127.0.0.1 python3 -c "import time, phoenix as px; px.launch_app(); [time.sleep(3600) for _ in iter(int, 1)]"`
@@ -116,8 +120,10 @@ to its trace.
 - **Exa:** a default run (4 rivals × 4 questions + 2 about you, up to 4 follow-ups) makes roughly
   40–90 Exa calls (search + page reads), depending on how many questions need a second search.
   Exa's free tier is $20 at signup + $10/month.
-- **AI:** one planner call per step, plus one or two researcher calls per question, billed per token
-  by OpenCode. Phoenix shows the token counts per call.
+- **AI:** one planner call per step, plus one or two researcher calls per question. Gemini's free
+  tier covers a scan if you stay under its per-minute and per-day limits. A default run makes
+  roughly 40–60 AI calls, so at 10 a minute it takes about 5 minutes. Phoenix shows the token counts
+  per call.
 - **Mock runs and tests:** free.
 
 ## Limitations

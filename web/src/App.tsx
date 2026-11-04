@@ -104,6 +104,9 @@ export default function App() {
         );
         if (e.status === "researching") setMessage("Researchers are searching with Exa…");
         break;
+      case "notice":
+        setMessage(e.message);
+        break;
       case "rival":
         setProfiling((p) => ({ ...p, [e.name]: e.status }));
         break;
@@ -168,7 +171,7 @@ export default function App() {
           {health && (
             <>
               <Chip tone={health.has_exa_key ? "green" : "amber"}>Exa key {health.has_exa_key ? "✓" : "missing"}</Chip>
-              <Chip tone={health.has_ai_key ? "green" : "amber"}>OpenCode key {health.has_ai_key ? "✓" : "missing"}</Chip>
+              <Chip tone={health.has_ai_key ? "green" : "amber"}>{aiName(health)} key {health.has_ai_key ? "✓" : "missing"}</Chip>
               <a href={health.phoenix.url} target="_blank" rel="noreferrer">
                 <Chip tone={health.phoenix.up ? "green" : "slate"}>Phoenix {health.phoenix.up ? "running ↗" : "off"}</Chip>
               </a>
@@ -289,7 +292,7 @@ function Setup(props: {
             <span className="text-sm text-amber-800">
               Add {!props.health?.has_exa_key && "EXA_API_KEY"}
               {!props.health?.has_exa_key && !props.health?.has_ai_key && " and "}
-              {!props.health?.has_ai_key && "OPENCODE_API_KEY"} to .env, or tick Mock mode.
+              {!props.health?.has_ai_key && (props.health?.ai_provider === "opencode" ? "OPENCODE_API_KEY" : "GEMINI_API_KEY")} to .env, or tick Mock mode.
             </span>
           )}
         </div>
@@ -321,15 +324,15 @@ function Setup(props: {
           </Field>
         </div>
         <details className="text-sm">
-          <summary className="cursor-pointer text-slate-600">AI models (via OpenCode)</summary>
+          <summary className="cursor-pointer text-slate-600">AI models{props.health ? ` (${aiName(props.health)})` : ""}</summary>
           <div className="mt-3 space-y-3">
             <Field label="Planner" hint="judgment steps">
               <input className={input} value={s.planner_model} onChange={(e) => setS({ planner_model: e.target.value })}
-                placeholder={props.health?.models.planner ?? "claude-sonnet-5-5"} />
+                placeholder={props.health?.models.planner ?? "gemini-3.6-flash"} />
             </Field>
             <Field label="Researchers" hint="run many times">
               <input className={input} value={s.researcher_model} onChange={(e) => setS({ researcher_model: e.target.value })}
-                placeholder={props.health?.models.researcher ?? "claude-haiku-5-5"} />
+                placeholder={props.health?.models.researcher ?? "gemini-3.5-flash-lite"} />
             </Field>
           </div>
         </details>
@@ -339,6 +342,10 @@ function Setup(props: {
       </Card>
     </div>
   );
+}
+
+function aiName(h: Health) {
+  return h.ai_provider === "opencode" ? "OpenCode" : "Gemini";
 }
 
 function clamp(n: number, lo: number, hi: number) {

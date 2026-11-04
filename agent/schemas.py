@@ -59,6 +59,8 @@ class Judgment(BaseModel):
     answered: bool = Field(description="True if the findings actually answer the question.")
     missing: str = Field("", description="What is still missing, if anything.")
     next_query: str = Field("", description="A better web search to try next, if not answered.")
+    answer: str = Field("", description="Two or three sentences answering the question using ONLY the "
+                                        "findings listed, or empty if they say nothing useful.")
 
 
 class FollowUps(BaseModel):

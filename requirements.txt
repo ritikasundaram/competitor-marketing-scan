@@ -1,7 +1,8 @@
 # Agent
 langgraph==0.6.11            # last release for Python 3.9 (1.x needs 3.10+)
 langchain-core>=0.3,<0.4
-langchain-anthropic>=0.3,<0.4  # Claude via OpenCode's Anthropic-style endpoint
+langchain-google-genai==2.1.12  # Gemini (last release for langchain-core 0.3)
+langchain-anthropic>=0.3,<0.4  # optional: Claude via OpenCode
 exa-py>=2.0
 pydantic>=2
 python-dotenv>=1

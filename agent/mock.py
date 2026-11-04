@@ -79,7 +79,8 @@ def _judge(system, user):
     q = (re.search(r"Question about .+?: (.+)", user) or [None, "the question"])[1]
     if "Nothing usable" in system:
         return {"answered": False, "missing": "no relevant sources", "next_query": q + " official announcement"}
-    return {"answered": True, "missing": "", "next_query": ""}
+    claims = re.findall(r"^- (.+)$", user, re.M)
+    return {"answered": True, "missing": "", "next_query": "", "answer": " ".join(claims[:2])}
 
 
 def _follow_ups(system, user):
