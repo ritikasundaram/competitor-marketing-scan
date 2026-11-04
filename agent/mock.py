@@ -114,7 +114,8 @@ def _actions(system, user):
     acts = []
     for i, (name, ids, strength, what) in enumerate(moves[:4]):
         acts.append({"title": f"Answer the {name}", "what": f"Respond to this move: {what[:140]}",
-                     "why": f"Rated {strength}; leaving it unanswered cedes the story.",
+                     "why": f"Rated {strength}; leaving it unanswered cedes the story"
+                            + (" to a rival growing 300% a year." if i == 0 else "."),
                      "first_step": "Draft a one-page response brief and share it with the team.",
                      "channel": ["press", "social", "email", "events"][i % 4],
                      "effort": ["Low", "Medium", "High", "Medium"][i % 4],

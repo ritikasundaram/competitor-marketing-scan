@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import datetime
 import operator
+import re
 import time
 from typing import Annotated, Optional, TypedDict
 
@@ -550,17 +551,24 @@ def plan_actions(state: ScanState) -> dict:
               f"Goal: {state['profile']['focus']}\n\n"
               f"Its own recent marketing:\n{fmt_findings(own)}\n\n"
               f"Rival moves (cite these ids):\n{rivals_txt}\n\nWrite 3 to 6 actions.")
+    evidence = " ".join(f"{x.get('title', '')} {x.get('snippet', '')} {x.get('text', '')}"
+                        for x in state["sources"].values())
     result, dropped = None, []
     for attempt in (1, 2):
         plan = ask("planner", ActionPlan, ACTIONS_SYSTEM, prompt, s)
         with tracing.span("check.actions", KIND.GUARDRAIL, input={"attempt": attempt,
                                                                   "actions": [a.model_dump() for a in plan.actions]},
-                          **{"guardrail.rules": "each action cites at least one checked rival source"}) as sp:
+                          **{"guardrail.rules": "each action cites at least one checked rival source; "
+                                                "numbers in its claims appear in the sources"}) as sp:
             kept, dropped = [], []
             for a in plan.actions:
                 ids = [i for i in clean_ids(a.source_ids) if i in rival_ids]
                 if ids:
-                    kept.append({**a.model_dump(), "source_ids": ids})
+                    # Numbers in the claims (what/why) must appear somewhere in the scan's sources.
+                    claim = re.sub(r"\b(?:Q\d+|ME)-\d+\b", " ", f"{a.what} {a.why}")
+                    missing = unverified_numbers(claim, evidence)
+                    flags = [f"numbers not found in sources: {', '.join(missing)}"] if missing else []
+                    kept.append({**a.model_dump(), "source_ids": ids, "flags": flags})
                 else:
                     dropped.append({"title": a.title, "reason": "cites no checked rival source"})
             sp.set("actions.kept", len(kept))

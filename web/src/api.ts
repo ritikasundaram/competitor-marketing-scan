@@ -71,6 +71,7 @@ export type Action = {
   impact: Level;
   horizon: string;
   source_ids: string[];
+  flags?: string[];
 };
 
 export type Dropped = {
@@ -109,6 +110,7 @@ export type ReportData = {
     lowered_by_rubric: number;
     actions: number;
     actions_dropped: number;
+    actions_flagged?: number;
   };
   trace: { session_id: string; trace_id: string };
 };

@@ -82,6 +82,15 @@ class FullRunTests(unittest.TestCase):
             self.assertTrue(set(a["source_ids"]) <= rival_ids and a["source_ids"])
         self.assertEqual([d["title"] for d in plan["dropped"]], ["Launch a podcast"])
 
+    def test_numbers_in_actions_must_appear_in_sources(self):
+        acts = self.data["plan"]["actions"]
+        # The mock repeats its planted "40% faster" and invents "300%"; neither is in any source.
+        self.assertIn("300%", acts[0]["flags"][0])
+        self.assertIn("40%", acts[0]["flags"][0])
+        for a in acts:  # source ids like Q1-2 in the text are never treated as numbers
+            self.assertFalse(any(x in " ".join(a["flags"]) for x in ("1-", "Q")))
+        self.assertEqual(self.data["stats"]["actions_flagged"], sum(1 for a in acts if a["flags"]))
+
     def test_report_files_are_written(self):
         stem = self.done["report"]["file"][:-5]
         self.assertTrue((self.tmp.path / f"{stem}.md").exists())

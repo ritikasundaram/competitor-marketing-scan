@@ -190,6 +190,9 @@ function ActionCard({ a, n, d }: { a: Action; n: number; d: ReportData }) {
       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
         Responds to {rivals.join(", ") || "rivals"}: <SourceLinks ids={a.source_ids} sources={d.sources} />
       </div>
+      {a.flags?.map((fl) => (
+        <div key={fl} className="mt-2"><Chip tone="amber">⚠ {fl}: check before using</Chip></div>
+      ))}
     </>
   );
 }
@@ -331,6 +334,7 @@ function Checks({ d }: { d: ReportData }) {
           <li>⚠ {st.flagged_numbers} findings had numbers the source doesn't show (confidence set to Low)</li>
           <li>⚠ {st.undated} findings have no known date</li>
           <li>✕ {st.actions_dropped} actions dropped for citing no checked rival source</li>
+          <li>⚠ {st.actions_flagged ?? 0} actions use numbers the sources don't show</li>
         </ul>
         {groups.map(([k, items]) => (
           <details key={k} className="mt-3 text-sm">

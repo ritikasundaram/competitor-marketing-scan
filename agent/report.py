@@ -68,6 +68,7 @@ def build_data(state: dict) -> dict:
             "lowered_by_rubric": sum(1 for p in profiles for c in p["campaigns"] if c.get("rubric_note")),
             "actions": len(plan.get("actions") or []),
             "actions_dropped": len(plan.get("dropped") or []),
+            "actions_flagged": sum(1 for a in plan.get("actions") or [] if a.get("flags")),
         },
         "trace": {"session_id": state["run_id"],
                   "trace_id": format(span_ctx.trace_id, "032x") if span_ctx.is_valid else ""},
@@ -89,6 +90,7 @@ def to_markdown(d: dict) -> str:
         out += [f"{i}. **{a['title']}** ({a['impact']} impact, {a['effort']} effort, {a['horizon'].lower()}, "
                 f"{a['channel']})", f"   - What: {a['what']}", f"   - Why: {a['why']}",
                 f"   - First step: {a['first_step']}", f"   - Evidence: {_link(src, a['source_ids'])}"]
+        out += [f"   - ⚠ {fl}" for fl in a.get("flags") or []]
     out += [""]
     out += ["## Rivals", ""]
     for p in d["profiles"]:
