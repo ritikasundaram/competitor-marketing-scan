@@ -21,8 +21,6 @@ Page excerpts are removed from the sample; the links and ratings are as the scan
   filterable campaign table) with **Download .md** and **Print / save PDF**. Saved reports open the
   same way; reports from before the dashboard existed open as text.
 - **Command line:** `python3 runner.py --company Figma` (see options below).
-- **Chat agent (OpenCode):** `@marketing-researcher` uses the Exa MCP server and follows the same
-  rules (see `.opencode/agents/marketing-researcher.md`). It doesn't share code with the app.
 
 ## Setup
 1. `pip install -r requirements.txt`

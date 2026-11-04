@@ -1,5 +1,5 @@
 """
-Manual-run competitor marketing researcher (mirrors the OpenCode MCP agent).
+Manual-run competitor marketing researcher.
 - Uses Exa (exa_py) for search + contents, or --dry-run mock data (no key, no cost).
 - Synthesis is template-based by default ($0). Set OPENAI_API_KEY to use LLM synthesis.
 - Tracing: Phoenix (local, free) and/or Langfuse via OpenTelemetry/OpenInference if installed.
