@@ -110,8 +110,14 @@ def _phoenix_up() -> bool:
         return False
 
 
+def _reload_env() -> None:
+    """Pick up keys added to .env while the server is running (no restart needed)."""
+    load_dotenv(ROOT / ".env", override=True)
+
+
 @app.get("/api/health")
 def health():
+    _reload_env()
     return {"ok": True, "has_exa_key": bool(os.getenv("EXA_API_KEY")),
             "has_ai_key": has_key(), "ai_provider": provider(), "ai_name": NAMES[provider()],
             "ai_key_name": KEYS[provider()],
@@ -121,6 +127,7 @@ def health():
 
 @app.post("/api/scans")
 def start_scan(body: StartBody):
+    _reload_env()
     s = body.settings.model_dump()
     models = {k: v for k, v in (("planner", s.pop("planner_model")), ("researcher", s.pop("researcher_model"))) if v}
     company = body.company.model_dump()
