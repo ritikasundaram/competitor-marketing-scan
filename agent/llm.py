@@ -195,8 +195,7 @@ def get_model(role: str, settings: dict, mock_responder: Optional[Callable] = No
         model=model,
         api_key=key,
         **extra,
-        max_tokens=8192 if role == "planner" else 4096,
-        temperature=0.2,
+        max_tokens=8192 if role == "planner" else 4096,  # no temperature: Claude 5.5 models reject it
         timeout=120,
         max_retries=2,
     )

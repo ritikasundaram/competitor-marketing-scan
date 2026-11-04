@@ -227,6 +227,7 @@ class ProviderTests(unittest.TestCase):
             self.assertEqual(type(m).__name__, "ChatAnthropic")
             self.assertEqual(m.model, "claude-haiku-5-5")
             self.assertNotIn("opencode", str(m.anthropic_api_url))
+            self.assertIsNone(m.temperature)  # Claude 5.5 models reject a temperature
             self.assertIn("Claude rejected", llm.llm_stop_reason(Exception("401 authentication_error invalid x-api-key")))
             self.assertIn("console.anthropic.com", llm.llm_stop_reason(
                 Exception("400 Your credit balance is too low to access the Anthropic API")))
