@@ -115,6 +115,15 @@ class RubricTests(unittest.TestCase):
         self.assertFalse(checks.similar("Which customer stories has Axure published?",
                                         "What pricing changes did Axure make?"))
 
+    def test_people_are_scrubbed_from_event_metrics(self):
+        self.assertEqual(checks.scrub_people("Mathieu Boulet, Yan Nerovny and 121 others listed on Luma"),
+                         "121+ others listed on Luma")
+        self.assertEqual(checks.scrub_people("30 reactions on Louis Chance's announcement post"),
+                         "30 reactions on an attendee's announcement post")
+        self.assertEqual(checks.scrub_people("4 reactions on Paris Web's post"), "4 reactions on Paris Web's post")
+        self.assertEqual(checks.scrub_people("Framer (hosted by Virgil Caffier)"), "Framer")
+        self.assertEqual(checks.scrub_people("600 creators"), "600 creators")
+
     def test_ids_are_cleaned(self):
         self.assertEqual(checks.clean_ids(["C3,", " q2-1 ", "C3", "[Q4-2]; Q5-1"]), ["C3", "Q2-1", "Q4-2", "Q5-1"])
 

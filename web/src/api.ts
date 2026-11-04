@@ -50,8 +50,28 @@ export type Campaign = {
   rubric_note: string;
 };
 
+export type RivalEvent = {
+  name: string;
+  kind: string;
+  date: string;
+  location: string;
+  format: "in-person" | "virtual" | "hybrid" | "unknown";
+  audience: string;
+  attendees: string;
+  engagement: string;
+  coverage: string;
+  partners: string;
+  strength: "Strong" | "Medium" | "Weak";
+  why: string;
+  source_ids: string[];
+  rubric_note: string;
+  flags: string[];
+};
+
 export type Profile = {
   rival: Rival;
+  events?: RivalEvent[];
+  dropped_events?: { name: string; reason: string }[];
   summary: string;
   positioning: string;
   campaigns: Campaign[];
@@ -84,6 +104,7 @@ export type Dropped = {
 export type ReportData = {
   version: 2;
   run_id: string;
+  focus?: "general" | "field";
   created: string;
   company: { name: string; domain: string; description?: string; goal?: string };
   profile: { summary: string; market: string; audiences: string[]; products: string[]; focus: string };
@@ -111,6 +132,10 @@ export type ReportData = {
     actions: number;
     actions_dropped: number;
     actions_flagged?: number;
+    events?: number;
+    events_with_attendance?: number;
+    events_with_engagement?: number;
+    event_metrics_flagged?: number;
   };
   trace: { session_id: string; trace_id: string };
 };
@@ -124,6 +149,7 @@ export type ReportListItem = {
   rivals: string[];
   mock: boolean;
   actions: number;
+  focus?: "general" | "field";
 };
 
 export type Health = {
@@ -143,6 +169,7 @@ export type Settings = {
   own_questions: number;
   max_age_days: number;
   approve_questions: boolean;
+  focus: "general" | "field";
   planner_model: string;
   researcher_model: string;
 };

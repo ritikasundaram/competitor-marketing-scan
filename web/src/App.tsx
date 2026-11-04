@@ -27,6 +27,7 @@ const STEPS: { node: string; label: string; optional?: boolean }[] = [
   { node: "approve_questions", label: "You approve questions", optional: true },
   { node: "research", label: "Research in parallel" },
   { node: "review_gaps", label: "Review gaps" },
+  { node: "event_followups", label: "Dig into each event" },
   { node: "profile_rival", label: "Profile each rival" },
   { node: "plan_actions", label: "Write the action plan" },
   { node: "write_report", label: "Save the report" },
@@ -39,6 +40,7 @@ const DEFAULT_SETTINGS: Settings = {
   own_questions: 2,
   max_age_days: 365,
   approve_questions: false,
+  focus: "general",
   planner_model: "",
   researcher_model: "",
 };
@@ -187,6 +189,7 @@ export default function App() {
               {reports.map((r) => (
                 <option key={r.run_id} value={r.run_id}>
                   {r.company} vs {r.rivals.join(", ")} · {r.created.slice(0, 10)}
+                  {r.focus === "field" ? " · field" : ""}
                   {r.mock ? " · mock" : ""}
                 </option>
               ))}
@@ -208,7 +211,7 @@ export default function App() {
 
       {(phase === "running" || phase === "rivals" || phase === "questions") && (
         <div className="grid gap-4 lg:grid-cols-[260px_1fr]">
-          <Progress doneNodes={doneNodes} phase={phase} approve={settings.approve_questions} />
+          <Progress doneNodes={doneNodes} phase={phase} approve={settings.approve_questions} field={settings.focus === "field"} />
           <div className="space-y-4">
             {phase === "rivals" && <ConfirmRivals rivals={pendingRivals} setRivals={setPendingRivals} onContinue={resume} />}
             {phase === "questions" && (
@@ -250,7 +253,7 @@ function Setup(props: {
   const { company: c, setCompany, settings: s, setSettings } = props;
   const set = (patch: Partial<Company>) => setCompany({ ...c, ...patch });
   const setS = (patch: Partial<Settings>) => setSettings({ ...s, ...patch });
-  const est = s.max_rivals * s.questions_per_rival + s.own_questions;
+  const est = s.max_rivals * s.questions_per_rival + s.own_questions + (s.focus === "field" ? s.max_rivals * 4 : 0);
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
       <Card>
@@ -300,6 +303,22 @@ function Setup(props: {
 
       <Card className="space-y-4">
         <h2 className="text-base font-semibold">Settings</h2>
+        <fieldset>
+          <legend className="text-sm font-medium">Focus</legend>
+          <div className="mt-1 grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1" role="radiogroup">
+            {([["general", "All marketing"], ["field", "Field marketing"]] as const).map(([v, label]) => (
+              <button key={v} type="button" role="radio" aria-checked={s.focus === v} onClick={() => setS({ focus: v })}
+                className={`rounded-md px-2 py-1.5 text-sm ${s.focus === v ? "bg-white font-semibold shadow-sm" : "text-slate-600 hover:text-slate-900"}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
+            {s.focus === "field"
+              ? "Rivals' events: conferences, meetups, roadshows, sponsorships. Then attendance and social engagement for the main ones."
+              : "Launches, campaigns, channels, partnerships, pricing and more."}
+          </p>
+        </fieldset>
         <Toggle checked={s.mock} onChange={(mock) => setS({ mock })} label="Mock mode"
           hint="Fake web and fake AI. Free, for trying it out." />
         <Toggle checked={s.approve_questions} onChange={(v) => setS({ approve_questions: v })} label="Approve questions"
@@ -310,7 +329,7 @@ function Setup(props: {
             <input type="number" min={1} max={6} className={input} value={s.max_rivals}
               onChange={(e) => setS({ max_rivals: clamp(+e.target.value, 1, 6) })} />
           </Field>
-          <Field label="Questions each">
+          <Field label={s.focus === "field" ? "Event questions each" : "Questions each"}>
             <input type="number" min={1} max={8} className={input} value={s.questions_per_rival}
               onChange={(e) => setS({ questions_per_rival: clamp(+e.target.value, 1, 8) })} />
           </Field>
@@ -337,7 +356,8 @@ function Setup(props: {
           </div>
         </details>
         <p className="text-xs text-slate-500">
-          About {est} questions, each 1–2 Exa searches plus page reads, and up to 4 follow-ups.
+          About {est} questions, each 1–2 Exa searches plus page reads
+          {s.focus === "field" ? ", including attendance and engagement questions for 2 events per rival." : ", and up to 4 follow-ups."}
         </p>
       </Card>
     </div>
@@ -384,17 +404,19 @@ function RivalInputs({ rivals, setRivals }: { rivals: Rival[]; setRivals: (r: Ri
   );
 }
 
-function Progress({ doneNodes, phase, approve }: { doneNodes: string[]; phase: Phase; approve: boolean }) {
-  const steps = STEPS.filter((s) => !s.optional || approve);
+function Progress({ doneNodes, phase, approve, field }: { doneNodes: string[]; phase: Phase; approve: boolean; field: boolean }) {
+  const steps = STEPS.filter((s) => (!s.optional || approve) && s.node !== (field ? "review_gaps" : "event_followups"));
   const current = steps.find((s, i) => !steps.slice(i).some((x) => doneNodes.includes(x.node)) || (
-    (s.node === "research" || s.node === "profile_rival") && !steps.slice(i + 1).some((x) => doneNodes.includes(x.node))));
+    (s.node === "research" || s.node === "profile_rival") && !steps.slice(i + 1).some(
+      (x) => doneNodes.includes(x.node) && !(s.node === "research" && x.node === "event_followups"))));
   return (
     <Card className="h-fit">
       <h2 className="mb-3 text-sm font-semibold text-slate-700">Agent steps</h2>
       <ol className="space-y-2 text-sm">
         {steps.map((s, i) => {
           // Parallel steps (many researchers, many profiles) finish when the next step starts.
-          const later = steps.slice(i + 1).some((x) => doneNodes.includes(x.node));
+          // In field focus, "dig into each event" starts a second research round, so it doesn't end research.
+          const later = steps.slice(i + 1).some((x) => doneNodes.includes(x.node) && !(s.node === "research" && x.node === "event_followups"));
           const parallel = s.node === "research" || s.node === "profile_rival";
           const done = later || (!parallel && doneNodes.includes(s.node));
           const active = current?.node === s.node;
@@ -439,7 +461,7 @@ function Live({ message, questions, gapNote, profiling }: {
             <div className="h-full rounded-full bg-blue-600 transition-all" style={{ width: `${(finished / list.length) * 100}%` }} />
           </div>
         )}
-        {gapNote && <p className="mt-3 text-sm text-violet-800">Gap review: {gapNote}</p>}
+        {gapNote && <p className="mt-3 text-sm text-violet-800">Next round: {gapNote}</p>}
         {Object.keys(profiling).length > 0 && (
           <p className="mt-2 text-sm text-slate-600">
             Profiling: {Object.entries(profiling).map(([n, s]) => `${n} ${s === "done" ? "✓" : "…"}`).join(" · ")}

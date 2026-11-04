@@ -42,6 +42,17 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(got["data"]["run_id"], done["run_id"])
             self.assertIn("## Action plan", got["markdown"])
 
+    def test_field_focus_is_accepted_and_listed(self):
+        body = {**START, "settings": {**START["settings"], "focus": "field"}}
+        with TempReports():
+            pause = events(client.post("/api/scans", json=body))[-1]
+            done = events(client.post(f"/api/scans/{pause['run_id']}/resume", json={"value": pause["rivals"]}))[-1]
+            self.assertEqual(done["event"], "done")
+            listed = client.get("/api/reports").json()["reports"]
+            self.assertEqual(listed[0]["focus"], "field")
+        bad = {**START, "settings": {**START["settings"], "focus": "events"}}
+        self.assertEqual(client.post("/api/scans", json=bad).status_code, 422)
+
     def test_given_rivals_are_used(self):
         body = {**START, "company": {**START["company"], "rivals": [{"name": "Sketch", "domain": "sketch.com"}]}}
         with TempReports():

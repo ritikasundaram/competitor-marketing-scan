@@ -7,7 +7,7 @@ from typing import List, Literal
 from pydantic import BaseModel, Field
 
 Dimension = Literal["launches", "campaigns", "channels", "partnerships", "positioning",
-                    "pricing", "events", "customers"]
+                    "pricing", "events", "customers", "attendance", "engagement"]
 
 
 class CompanyProfile(BaseModel):
@@ -101,3 +101,54 @@ class Action(BaseModel):
 class ActionPlan(BaseModel):
     headline: str = Field(description="The single most important takeaway, one sentence.")
     actions: List[Action]
+
+
+# ---------- field marketing (events) ----------
+
+EventKind = Literal["conference", "summit", "meetup", "roadshow", "webinar", "workshop", "hackathon",
+                    "sponsorship", "trade show", "community", "other"]
+
+
+class EventLead(BaseModel):
+    """An event a rival hosted, sponsored or announced, spotted in the first round of research."""
+    company: str = Field(description="Exact rival name as given.")
+    name: str = Field(description="The event's name as the source writes it, e.g. 'Framer Conf 2026'.")
+    kind: EventKind
+    date: str = Field("", description="When it happened or will happen (YYYY-MM-DD or YYYY-MM), if known.")
+    importance: int = Field(description="1-5: how much this event matters for the user's field marketing.")
+
+
+class EventLeads(BaseModel):
+    events: List[EventLead]
+
+
+class RivalEvent(BaseModel):
+    name: str
+    kind: EventKind
+    organizer: str = Field("", description="Who ran or sponsored it, as the sources say (a company, not a person).")
+    run_by_rival: bool = Field(description="True only if the competitor itself hosted, co-hosted or sponsored "
+                                           "it. False for a different company with a similar name.")
+    date: str = Field("", description="YYYY-MM-DD or YYYY-MM if known, else empty.")
+    location: str = Field("", description="City/venue, or 'online'. Empty if unknown.")
+    format: Literal["in-person", "virtual", "hybrid", "unknown"] = "unknown"
+    audience: str = Field("", description="Who it was for, e.g. 'design leaders', 'developers'.")
+    attendees: str = Field("", description="Attendance or registrations as a source states it, under 10 words, "
+                                           "no personal names (e.g. '3,000 attendees', '124 registered on Luma'). "
+                                           "Empty if no source says.")
+    engagement: str = Field("", description="Social engagement as sources state it, under 15 words, no personal "
+                                            "names (e.g. '20 reactions, 2 comments on Framer's LinkedIn post'). "
+                                            "Empty if no source says.")
+    coverage: str = Field("", description="Press or partner coverage, briefly. Empty if none found.")
+    partners: str = Field("", description="Sponsors, speakers or partners named in sources, briefly.")
+    strength: Literal["Strong", "Medium", "Weak"] = Field(description="Rated with the rubric.")
+    why: str = Field(description="One sentence explaining the rating from the evidence.")
+    source_ids: List[str] = Field(description="Source ids backing this event.")
+
+
+class RivalEventProfile(BaseModel):
+    summary: str = Field(description="Two sentences: how this rival uses events and who it targets.")
+    positioning: str = Field(description="What its events say about how it wants to be seen, one sentence.")
+    events: List[RivalEvent]
+    threat: Literal["High", "Medium", "Low"] = Field(description="How much its event program threatens "
+                                                                 "the user's company in the field.")
+    threat_why: str = Field(description="One sentence on why.")

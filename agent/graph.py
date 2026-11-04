@@ -22,12 +22,12 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send, interrupt
 
 from . import exa, mock, tracing
-from .checks import (RUBRIC, check_findings, clean_ids, norm_url, on_own_site, rubric_cap, similar,
-                     unverified_numbers)
+from .checks import (RUBRIC, check_findings, clean_ids, norm_url, on_own_site, rubric_cap, scrub_people,
+                     similar, unverified_numbers)
 from .llm import (LLMStop, exhausted, get_model, is_daily_quota, is_stuck, is_transient, llm_stop_reason,
                   mark_exhausted, model_chain)
-from .schemas import (ActionPlan, CompanyProfile, FollowUps, Judgment, QuestionPlan, ResearchAnswer,
-                      RivalProfile)
+from .schemas import (ActionPlan, CompanyProfile, EventLeads, FollowUps, Judgment, QuestionPlan,
+                      ResearchAnswer, RivalEventProfile, RivalProfile)
 from .tracing import KIND
 
 DEFAULTS = {
@@ -44,6 +44,8 @@ DEFAULTS = {
     "confirm_rivals": True,
     "approve_questions": False,
     "models": {},
+    "focus": "general",          # or "field": rivals' events, attendance and engagement
+    "max_events_per_rival": 2,   # field focus: events that get attendance + engagement questions
 }
 
 
@@ -227,17 +229,30 @@ PLAN_SYSTEM = (
 )
 
 
+FIELD_PLAN_SYSTEM = (
+    "You plan field marketing research on competitors' events. Break the job into small, atomic questions: "
+    "each about one company and one kind of event, answerable from a few web pages. Cover what they hosted "
+    "(user conferences, summits, meetups, roadshows, workshops, hackathons, webinars), what they sponsored or "
+    "exhibited at (trade shows, partner events), and what is announced as upcoming. Ask for names, dates, "
+    "cities and audiences. Each question needs a natural-language search query that names the company with "
+    "its domain in brackets, plus words like 'event', 'conference', 'meetup' or 'recap'."
+)
+
+
 def plan_questions(state: ScanState) -> dict:
     c, s, prof = state["company"], state["settings"], state["profile"]
+    field = s.get("focus") == "field"
     emit("step", step="plan_questions", message="Breaking the research into small questions…")
     rivals = "\n".join(f"- {who(r)}: {r.get('reason', '')}" for r in state["rivals"])
-    plan = ask("planner", QuestionPlan, PLAN_SYSTEM,
+    about_self = ("its own recent events, so advice doesn't repeat what it already runs" if field else
+                  "its own recent marketing, so advice doesn't repeat what it already does")
+    plan = ask("planner", QuestionPlan, FIELD_PLAN_SYSTEM if field else PLAN_SYSTEM,
                f"Today is {today().isoformat()}. Look at the last {s['max_age_days']} days.\n"
                f"User's company: {who(c)}. {prof['summary']} Market: {prof['market']}.\n"
                f"User's goal: {prof['focus']}\n\n"
                f"Rivals:\n{rivals}\n\n"
                f"Write exactly {s['questions_per_rival']} questions per rival, and {s['own_questions']} about "
-               f"{c['name']} itself (its own recent marketing, so advice doesn't repeat what it already does).",
+               f"{c['name']} itself ({about_self}).",
                s)
     qs = _number(plan.questions, state, 1)
     emit("questions", questions=qs)
@@ -264,7 +279,8 @@ def _number(questions, state: ScanState, rnd: int, cap: bool = True) -> list:
         out.append({"id": f"Q{start + len(out)}", "company": co["name"], "domain": co.get("domain", ""),
                     "is_self": co["name"] == me["name"], "dimension": q.get("dimension", "campaigns"),
                     "question": q["question"].strip(),
-                    "search_query": (q.get("search_query") or q["question"]).strip(), "round": rnd})
+                    "search_query": (q.get("search_query") or q["question"]).strip(), "round": rnd,
+                    "include_domains": q.get("include_domains") or []})
     return out
 
 
@@ -318,7 +334,10 @@ def r_search(st: ResearchState) -> dict:
         query = f"{who(q)}: {query}"  # always name the website, so look-alike companies stay out
     if attempt > 1:
         emit("question", id=q["id"], status="retrying", query=query)
-    found = exa.search(exa.make_client(s["mock"]), query, f"{q['id']}x", num=s["results_per_search"])
+    # Social-only searches (event engagement) widen to the whole web if the first try comes up short.
+    domains = q.get("include_domains") if attempt == 1 else None
+    found = exa.search(exa.make_client(s["mock"]), query, f"{q['id']}x", num=s["results_per_search"],
+                       include_domains=domains)
     seen = {d["url"] for d in st.get("docs") or []}
     docs = list(st.get("docs") or [])
     for d in found:
@@ -446,6 +465,55 @@ def research(payload: dict) -> dict:
 
 # ---------- 5. look for gaps, maybe research again ----------
 
+def after_research(state: ScanState) -> str:
+    """Field focus: after the first round, dig into the events found. Otherwise review gaps."""
+    if state["settings"].get("focus") == "field" and state.get("round", 1) == 1:
+        return "event_followups"
+    return "review_gaps"
+
+
+def event_followups(state: ScanState) -> dict:
+    """Field focus: pick each rival's main events and ask about attendance and social engagement."""
+    s, rnd = state["settings"], state.get("round", 1)
+    emit("step", step="event_followups", message="Finding rivals' events; asking about attendance and engagement…")
+    rivals = {r["name"].lower(): r for r in state["rivals"]}
+    found = [a for a in state["answers"] if not a["question"]["is_self"]]
+    leads = ask("planner", EventLeads,
+                "From checked research findings, list the distinct events each competitor hosted, sponsored or "
+                "announced. Use the event's own name. Skip vague mentions with no identifiable event. Rate how "
+                "much each matters for the user's field marketing.",
+                f"Today is {today().isoformat()}. User's company: {who(state['company'])}.\n"
+                f"Rivals: {', '.join(who(r) for r in state['rivals'])}\n\nFindings:\n{fmt_findings(found)}", s)
+    picked: dict = {}
+    for e in sorted(leads.events, key=lambda e: -e.importance):
+        r = rivals.get(e.company.strip().lower())
+        if not r or len(picked.setdefault(r["name"], [])) >= s["max_events_per_rival"]:
+            continue
+        if all(not similar(e.name, x.name, 0.8) for x in picked[r["name"]]):
+            picked[r["name"]].append(e)
+    questions = []
+    for name, events in picked.items():
+        dom = rivals[name.lower()].get("domain", "")
+        tag = f"{name} ({dom})" if dom else name
+        for e in events:
+            when = f" ({e.date})" if e.date else ""
+            questions.append({"company": name, "dimension": "attendance",
+                              "question": f"How many people attended or registered for {e.name}{when}?",
+                              "search_query": f"{tag} {e.name} attendees registrations recap"})
+            questions.append({"company": name, "dimension": "engagement",
+                              "question": f"How much social media engagement did {e.name}{when} get "
+                                          "(reactions, comments, views, hashtag use)?",
+                              "search_query": f"{tag} {e.name} recap highlights",
+                              "include_domains": exa.SOCIAL_DOMAINS})
+    new = _number(questions, state, rnd + 1, cap=False)
+    gaps = "; ".join(f"{n}: {', '.join(e.name for e in evs)}" for n, evs in picked.items()) or "no named events found"
+    if new:
+        emit("questions", questions=new, follow_up=True, gaps=f"Digging into events: {gaps}")
+    return {"questions": state["questions"] + new, "round": rnd + 1 if new else rnd,
+            "reviews": [{"round": rnd, "gaps": f"Events picked for attendance and engagement questions: {gaps}",
+                         "added": len(new)}]}
+
+
 def review_gaps(state: ScanState) -> dict:
     s, rnd = state["settings"], state.get("round", 1)
     if rnd >= s["max_rounds"]:
@@ -491,10 +559,101 @@ def _slim(state: ScanState, company: str) -> dict:
 
 # ---------- 6. one profile per rival, rated with the rubric ----------
 
+def _unique_ids(raw_ids, sources: dict) -> list:
+    ids, urls = [], set()
+    for i in clean_ids(raw_ids):  # one id per page: two ids can point at the same URL
+        if i in sources and norm_url(sources[i]["url"]) not in urls:
+            ids.append(i)
+            urls.add(norm_url(sources[i]["url"]))
+    return ids
+
+
+EVENT_METRICS = ("attendees", "engagement", "coverage")
+
+
+def event_date(value: str):
+    """'2026-05-07', '2026-05' or '2026' -> a date (first day of the period); None if unknown."""
+    m = re.match(r"^(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?", (value or "").strip())
+    if not m:
+        return None
+    try:
+        return datetime.date(int(m.group(1)), int(m.group(2) or 12), int(m.group(3) or 28))
+    except ValueError:
+        return None
+
+
+def profile_rival_events(r: dict, st: dict) -> dict:
+    """Field focus: one card per rival listing its events, each metric checked against the sources."""
+    s, sources = st["settings"], st["sources"]
+    prof = ask("planner", RivalEventProfile,
+               "You profile one competitor's events from checked research findings. One entry per distinct "
+               "event. Only events the competitor itself hosted, co-hosted or sponsored count; mark anything run "
+               "by a different company with a similar name as run_by_rival false. Copy attendance and engagement "
+               "numbers exactly as the findings state them, and leave a field empty when no finding gives it: "
+               "never estimate. Keep metric fields short and never name private individuals. Cite only the "
+               "source ids shown. Rate each event with the rubric; a stated attendance figure counts as a "
+               "concrete result, engagement counts alone don't.\n\n" + RUBRIC,
+               f"User's company: {who(st['company'])}. {st['profile']['summary']}\n"
+               f"Competitor: {who(r)}\n\nFindings:\n{fmt_findings(st['answers'])}", s)
+    events, camps, dropped = [], [], []
+    with tracing.span("check.events", KIND.GUARDRAIL, input={"rival": r["name"],
+                                                             "events": [e.model_dump() for e in prof.events]},
+                      **{"guardrail.rules": "run by this rival; not older than max_age_days; citations exist; "
+                                            "attendance/engagement numbers appear in the sources; rating held "
+                                            "to the rubric (only attendance counts as a concrete result)"}) as sp:
+        all_text = " ".join(f"{x.get('title', '')} {x.get('snippet', '')} {x.get('text', '')}"
+                            for x in sources.values())
+        for e in prof.events:
+            ids = _unique_ids(e.source_ids, sources)
+            if not ids:
+                dropped.append({"name": e.name, "reason": "cites no checked source"})
+                continue
+            if not e.run_by_rival:
+                dropped.append({"name": e.name, "reason": f"run by {e.organizer or 'another company'}, not {r['name']}"})
+                continue
+            when = event_date(e.date)
+            if when and s["max_age_days"] > 0 and (today() - when).days > s["max_age_days"]:
+                dropped.append({"name": e.name, "reason": f"old: held {e.date}"})
+                continue
+            text = " ".join(f"{sources[i].get('title', '')} {sources[i].get('snippet', '')} "
+                            f"{sources[i].get('text', '')}" for i in ids)
+            ev, flags, verified = e.model_dump(), [], False
+            for field in EVENT_METRICS:
+                value = ev[field]
+                if not value or not any(ch.isdigit() for ch in value):
+                    continue
+                if unverified_numbers(value, text) and unverified_numbers(value, all_text):
+                    flags.append(f"{field} not found in sources: {value}")
+                    ev[field] = ""  # an unbacked number is worse than none; the flag keeps the claim visible
+                elif field == "attendees":
+                    verified = True  # a sourced attendance figure is a concrete result; engagement alone isn't
+            strength, note = rubric_cap(e.strength, ids, sources, r.get("domain", ""), verified)
+            keep = {r["name"], ev["name"], ev["organizer"]}
+            for field in ("attendees", "engagement", "coverage", "partners", "organizer"):
+                ev[field] = scrub_people(ev[field], keep)  # no private individuals in the report
+            ev.update({"source_ids": ids, "strength": strength, "rubric_note": note, "flags": flags})
+            events.append(ev)
+            facts = ", ".join(x for x in (ev["date"], ev["location"] or ev["format"],
+                                          ev["attendees"], ev["engagement"]) if x and x != "unknown")
+            camps.append({"name": ev["name"], "what": f"{ev['kind']}" + (f": {facts}" if facts else ""),
+                          "channel": ev["kind"], "strength": strength, "why": ev["why"], "source_ids": ids,
+                          "rubric_note": note})
+        sp.set("events.kept", len(events))
+        sp.set("events.dropped", len(dropped))
+        sp.set("events.metric_flags", sum(len(e["flags"]) for e in events))
+        sp.output(events)
+    emit("rival", name=r["name"], status="done")
+    return {"profiles": [{"rival": r, "summary": prof.summary, "positioning": prof.positioning,
+                          "threat": prof.threat, "threat_why": prof.threat_why,
+                          "campaigns": camps, "events": events, "dropped_events": dropped}]}
+
+
 def profile_rival(payload: dict) -> dict:
     r, st = payload["rival"], payload["state"]
     s, sources = st["settings"], st["sources"]
     emit("rival", name=r["name"], status="profiling")
+    if s.get("focus") == "field":
+        return profile_rival_events(r, st)
     prof = ask("planner", RivalProfile,
                "You profile one competitor's recent marketing from checked research findings. Group findings "
                "into campaigns or moves. Cite only the source ids shown. Rate each campaign with the rubric; "
@@ -506,11 +665,7 @@ def profile_rival(payload: dict) -> dict:
                                                              "campaigns": [c.model_dump() for c in prof.campaigns]},
                       **{"guardrail.rules": "citations exist; rating held to the rubric by source count"}) as sp:
         for c in prof.campaigns:
-            ids, urls = [], set()
-            for i in clean_ids(c.source_ids):  # one id per page: two ids can point at the same URL
-                if i in sources and norm_url(sources[i]["url"]) not in urls:
-                    ids.append(i)
-                    urls.add(norm_url(sources[i]["url"]))
+            ids = _unique_ids(c.source_ids, sources)
             if not ids:
                 continue
             claims = " ".join(f["claim"] for a in st["answers"] for f in a["findings"]
@@ -537,8 +692,20 @@ ACTIONS_SYSTEM = (
 )
 
 
+FIELD_ACTIONS_SYSTEM = (
+    "You are a field marketing strategist. Turn checked research on competitors' events into a short, ranked "
+    "plan for the user's company: which rival events to counter-program, attend, sponsor or speak at; which "
+    "cities, formats and dates to target; how to win attention around rival events (side events, socials, "
+    "partner co-marketing); and what to borrow from rival events that drew strong attendance or engagement. "
+    "Every action must respond to specific rival events and cite their source ids. Use real dates and places "
+    "from the research. Don't recommend events the company already runs (see its own recent events). Rank by "
+    "impact over effort."
+)
+
+
 def plan_actions(state: ScanState) -> dict:
     s, c = state["settings"], state["company"]
+    field = s.get("focus") == "field"
     emit("step", step="plan_actions", message="Writing the action plan…")
     rival_ids = {i for p in state["profiles"] for camp in p["campaigns"] for i in camp["source_ids"]}
     own = [a for a in state["answers"] if a["question"]["is_self"]]
@@ -549,13 +716,13 @@ def plan_actions(state: ScanState) -> dict:
     prompt = (f"User's company: {who(c)}. {state['profile']['summary']}\n"
               f"Already offers: {', '.join(state['profile']['products'])}\n"
               f"Goal: {state['profile']['focus']}\n\n"
-              f"Its own recent marketing:\n{fmt_findings(own)}\n\n"
-              f"Rival moves (cite these ids):\n{rivals_txt}\n\nWrite 3 to 6 actions.")
+              f"Its own recent {'events' if field else 'marketing'}:\n{fmt_findings(own)}\n\n"
+              f"Rival {'events' if field else 'moves'} (cite these ids):\n{rivals_txt}\n\nWrite 3 to 6 actions.")
     evidence = " ".join(f"{x.get('title', '')} {x.get('snippet', '')} {x.get('text', '')}"
                         for x in state["sources"].values())
     result, dropped = None, []
     for attempt in (1, 2):
-        plan = ask("planner", ActionPlan, ACTIONS_SYSTEM, prompt, s)
+        plan = ask("planner", ActionPlan, FIELD_ACTIONS_SYSTEM if field else ACTIONS_SYSTEM, prompt, s)
         with tracing.span("check.actions", KIND.GUARDRAIL, input={"attempt": attempt,
                                                                   "actions": [a.model_dump() for a in plan.actions]},
                           **{"guardrail.rules": "each action cites at least one checked rival source; "
@@ -599,6 +766,7 @@ def build_graph(checkpointer=None):
     g.add_node("approve_questions", approve_questions)
     g.add_node("research", research)
     g.add_node("review_gaps", review_gaps)
+    g.add_node("event_followups", event_followups)
     g.add_node("profile_rival", profile_rival)
     g.add_node("plan_actions", plan_actions)
     g.add_node("write_report", write_report)
@@ -608,7 +776,8 @@ def build_graph(checkpointer=None):
     g.add_edge("confirm_rivals", "plan_questions")
     g.add_edge("plan_questions", "approve_questions")
     g.add_conditional_edges("approve_questions", dispatch_research, ["research"])
-    g.add_edge("research", "review_gaps")
+    g.add_conditional_edges("research", after_research, ["event_followups", "review_gaps"])
+    g.add_conditional_edges("event_followups", after_review, ["research", "profile_rival"])
     g.add_conditional_edges("review_gaps", after_review, ["research", "profile_rival"])
     g.add_edge("profile_rival", "plan_actions")
     g.add_edge("plan_actions", "write_report")

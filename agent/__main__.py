@@ -55,6 +55,8 @@ def main(argv=None) -> int:
     ap.add_argument("--max-rivals", type=int, default=4)
     ap.add_argument("--own-questions", type=int, default=2)
     ap.add_argument("--max-age-days", type=int, default=365)
+    ap.add_argument("--focus", choices=["general", "field"], default="general",
+                    help="field: rivals' events, with attendance and social engagement")
     ap.add_argument("--no-trace", action="store_true", help="don't send traces to Phoenix")
     a = ap.parse_args(argv)
 
@@ -65,7 +67,7 @@ def main(argv=None) -> int:
         company["rivals"] = parse_rivals(a.rivals)
     settings = {"mock": a.mock, "confirm_rivals": not a.yes, "approve_questions": a.approve_questions,
                 "questions_per_rival": a.questions_per_rival, "max_rivals": a.max_rivals,
-                "own_questions": a.own_questions,
+                "own_questions": a.own_questions, "focus": a.focus,
                 "max_age_days": a.max_age_days}
     run_id = new_run_id()
     events = run_segment(run_id, start={"company": company, "settings": settings})

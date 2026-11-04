@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { phoenixLink, type Action, type Answer, type Level, type ReportData, type SavedReport } from "./api";
+import { phoenixLink, type Action, type Answer, type Level, type ReportData, type RivalEvent, type SavedReport } from "./api";
 import { Card, Chip, SourceLinks, StatusChip, StrengthPill, ThreatChip } from "./ui";
 
 const RUBRIC = [
@@ -12,6 +12,7 @@ export default function Dashboard({ report }: { report: SavedReport }) {
   const d = report.data;
   const st = d.stats;
   const removed = Object.values(st.dropped).reduce((a, b) => a + b, 0);
+  const field = d.focus === "field";
 
   // Print / Save as PDF: open every fold-out and name the file after the scan.
   useEffect(() => {
@@ -48,7 +49,8 @@ export default function Dashboard({ report }: { report: SavedReport }) {
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-sm text-slate-500">
-            Competitor scan · {d.created.slice(0, 10)} · run <span className="font-mono">{d.run_id}</span>
+            {field ? "Field marketing scan" : "Competitor scan"} · {d.created.slice(0, 10)} · run{" "}
+            <span className="font-mono">{d.run_id}</span>
           </p>
           <h2 className="text-2xl font-semibold tracking-tight">
             {d.company.name} <span className="font-normal text-slate-400">vs</span> {d.rivals.map((r) => r.name).join(", ")}
@@ -79,6 +81,15 @@ export default function Dashboard({ report }: { report: SavedReport }) {
         <p className="mt-1 text-lg font-medium text-slate-900">{d.plan.headline}</p>
       </Card>
 
+      {field ? (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+          <Tile label="Rival events found" value={st.events ?? 0} />
+          <Tile label="With attendance figures" value={st.events_with_attendance ?? 0} note="each backed by a source" />
+          <Tile label="With social engagement" value={st.events_with_engagement ?? 0} note="from LinkedIn, X, YouTube…" />
+          <Tile label="Numbers removed" value={st.event_metrics_flagged ?? 0} note="no source showed them" />
+          <Tile label="Actions" value={st.actions} />
+        </div>
+      ) : (
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         <Tile label="Actions" value={st.actions} />
         <Tile label="Questions answered" value={`${st.answered}/${st.questions}`} note={st.retried ? `${st.retried} needed a 2nd search` : undefined} />
@@ -86,8 +97,10 @@ export default function Dashboard({ report }: { report: SavedReport }) {
         <Tile label="Removed by checks" value={removed} note={Object.entries(st.dropped).map(([k, n]) => `${n} ${k}`).join(", ") || undefined} />
         <Tile label="Ratings lowered" value={st.lowered_by_rubric} note="to fit the rubric" />
       </div>
+      )}
 
       <ActionPlan d={d} />
+      {field && <Events d={d} />}
       <Rivals d={d} />
       <Questions d={d} />
       <Checks d={d} />
@@ -373,6 +386,96 @@ function Checks({ d }: { d: ReportData }) {
         <p className="mt-1 text-sm text-slate-600">{d.profile.summary}</p>
         {d.profile.products?.length > 0 && <p className="mt-1 text-xs text-slate-500">Already offers: {d.profile.products.join(", ")}</p>}
       </Card>
+    </section>
+  );
+}
+
+function Events({ d }: { d: ReportData }) {
+  const [rival, setRival] = useState("all");
+  const rows = d.profiles.flatMap((p) => (p.events ?? []).map((e) => ({ rival: p.rival.name, e })));
+  const list = rows.filter((r) => rival === "all" || r.rival === rival);
+  const where = (e: RivalEvent) => e.location || (e.format !== "unknown" ? e.format : "");
+  const Metric = ({ value, flags, name }: { value: string; flags: string[]; name: string }) => {
+    const flag = flags.find((f) => f.startsWith(name));
+    if (value) return <span className="font-medium text-slate-900">{value}</span>;
+    if (flag) return <span title={flag}><Chip tone="amber">⚠ removed: no source</Chip></span>;
+    return <span className="text-slate-400">not found</span>;
+  };
+  return (
+    <section>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="text-lg font-semibold">Rival events</h3>
+          <p className="text-xs text-slate-500">Every figure is quoted from a source; a figure no source showed is removed and marked ⚠.</p>
+        </div>
+        <select aria-label="Filter events by rival" className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm print:hidden"
+          value={rival} onChange={(e) => setRival(e.target.value)}>
+          <option value="all">All rivals</option>
+          {d.profiles.map((p) => <option key={p.rival.name}>{p.rival.name}</option>)}
+        </select>
+      </div>
+      {!list.length && <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">No events with checked sources.</p>}
+      <div className="hidden overflow-hidden rounded-xl border border-slate-200 bg-white md:block print:block">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-slate-50 text-xs text-slate-500">
+            <tr>
+              <th className="px-3 py-2 font-medium">Event</th>
+              <th className="px-3 py-2 font-medium">When · where</th>
+              <th className="px-3 py-2 font-medium">Attendees</th>
+              <th className="px-3 py-2 font-medium">Social engagement</th>
+              <th className="px-3 py-2 font-medium">Strength</th>
+              <th className="px-3 py-2 font-medium">Sources</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {list.map(({ rival: r, e }, i) => (
+              <tr key={i} className="align-top">
+                <td className="px-3 py-3">
+                  <p className="font-medium">{e.name}</p>
+                  <p className="text-xs text-slate-500">{r} · {e.kind}{e.audience ? ` · for ${e.audience}` : ""}</p>
+                  {e.coverage && <p className="mt-1 text-xs text-slate-500">Coverage: {e.coverage}</p>}
+                  {e.partners && <p className="text-xs text-slate-500">Partners: {e.partners}</p>}
+                </td>
+                <td className="px-3 py-3 text-slate-700">{e.date || "date unknown"}<br /><span className="text-xs text-slate-500">{where(e)}</span></td>
+                <td className="px-3 py-3"><Metric value={e.attendees} flags={e.flags} name="attendees" /></td>
+                <td className="px-3 py-3"><Metric value={e.engagement} flags={e.flags} name="engagement" /></td>
+                <td className="px-3 py-3"><StrengthPill value={e.strength} note={e.rubric_note} /></td>
+                <td className="px-3 py-3"><SourceLinks ids={e.source_ids} sources={d.sources} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {d.profiles.some((p) => p.dropped_events?.length) && (
+        <details className="mt-3 text-sm">
+          <summary className="cursor-pointer text-slate-600">
+            Events left out ({d.profiles.reduce((n, p) => n + (p.dropped_events?.length ?? 0), 0)}): another company with a similar name, too old, or no checked source
+          </summary>
+          <ul className="mt-2 space-y-1 text-slate-600">
+            {d.profiles.flatMap((p) => (p.dropped_events ?? []).map((x, i) => (
+              <li key={p.rival.name + i}>{p.rival.name}: {x.name} <span className="text-slate-400">({x.reason})</span></li>
+            )))}
+          </ul>
+        </details>
+      )}
+      <ul className="mt-3 space-y-3 md:hidden print:hidden">
+        {list.map(({ rival: r, e }, i) => (
+          <li key={i} className="rounded-xl border border-slate-200 bg-white p-4 text-sm">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="font-medium">{e.name}</p>
+                <p className="text-xs text-slate-500">{r} · {e.kind} · {e.date || "date unknown"}{where(e) ? ` · ${where(e)}` : ""}</p>
+              </div>
+              <StrengthPill value={e.strength} note={e.rubric_note} />
+            </div>
+            <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
+              <div><dt className="text-slate-500">Attendees</dt><dd><Metric value={e.attendees} flags={e.flags} name="attendees" /></dd></div>
+              <div><dt className="text-slate-500">Social engagement</dt><dd><Metric value={e.engagement} flags={e.flags} name="engagement" /></dd></div>
+            </dl>
+            <div className="mt-2"><SourceLinks ids={e.source_ids} sources={d.sources} /></div>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

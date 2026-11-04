@@ -24,6 +24,22 @@ plan_actions ─ ranked actions: what, why, first step, effort, impact, evidence
 write_report ─ reports/<date>_scan_<run>.json (dashboard) + .md
 ```
 
+**Field marketing focus** (Settings → Focus, or `--focus field`): the same agent, aimed at rivals' events.
+1. Round 1 asks what conferences, summits, meetups, roadshows, workshops, webinars and sponsorships each
+   rival ran in the last year or has announced.
+2. `event_followups` picks each rival's main events (2 by default) and asks two questions per event:
+   attendance/registrations (whole web), and social engagement (Exa `include_domains` limited to
+   LinkedIn, X, YouTube and Instagram, widening to the whole web on the retry).
+3. Each rival gets an events table: type, date, place, audience, attendees, engagement, coverage,
+   partners. Rules:
+   - events run by a different company with a similar name are left out (with the reason)
+   - events whose own date is older than `max_age_days` are left out
+   - an attendance or engagement figure no source shows is removed and marked ⚠
+   - only a sourced attendance figure counts as a concrete result for a Strong rating
+   - private individuals' names are scrubbed from the metrics
+4. The action plan is field-marketing specific: what to counter-program, attend, sponsor or speak
+   at, where and when.
+
 **Who does what**
 - **Exa** does all the web research:
   - `search` (type auto + highlights) finds pages by meaning
@@ -95,6 +111,7 @@ to its trace.
 - **Command line:**
   - `python3 -m agent --company Figma --domain figma.com --goal "enterprise marketing"`
   - `--mock` free fake run · `--yes` don't pause for rivals · `--approve-questions` review the list
+  - `--focus field` research rivals' events (attendance, social engagement) instead of all marketing
   - `--rivals "Sketch,sketch.com;Penpot,penpot.app"` skip discovery · `--no-trace` no Phoenix
 - **Tests** (free, offline; fake Exa + fake AI): `python3 -m unittest discover -s tests`
   - the fact checks and rubric

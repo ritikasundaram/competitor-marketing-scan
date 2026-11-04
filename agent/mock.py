@@ -24,7 +24,7 @@ def respond(name: str, messages) -> dict:
     system, user = _text(messages)
     fn = {"CompanyProfile": _profile, "QuestionPlan": _plan, "ResearchAnswer": _answer,
           "Judgment": _judge, "FollowUps": _follow_ups, "RivalProfile": _rival,
-          "ActionPlan": _actions}.get(name)
+          "ActionPlan": _actions, "EventLeads": _event_leads, "RivalEventProfile": _rival_events}.get(name)
     return fn(system, user) if fn else {}
 
 
@@ -44,8 +44,15 @@ def _plan(system, user):
     own_n = int((re.search(r"and (\d+) about", user) or [0, 2])[1])
     me = re.search(r"User's company: (.+?) \((.+?)\)", user)
     qs = []
+    dims = ["events"] * per if "field marketing" in system else DIMENSIONS[:per]
     for name, dom in rivals:
-        for dim in DIMENSIONS[:per]:
+        for i, dim in enumerate(dims):
+            if dim == "events":
+                kind = ["conferences or summits", "meetups or roadshows", "sponsored trade shows", "webinars"][i % 4]
+                qs.append({"company": name, "dimension": "events",
+                           "question": f"Which {kind} has {name} hosted or announced in the last 12 months?",
+                           "search_query": f"{name} ({dom}) {kind} event 2026"})
+                continue
             qs.append({"company": name, "dimension": dim,
                        "question": f"What {dim} has {name} announced in the last 12 months?",
                        "search_query": f"{name} ({dom}) {dim} announcement 2026"})
@@ -65,8 +72,10 @@ def _answer(system, user):
     if "(pricing)" in user and "Attempt: 1" in user:
         return {"answer": "The sources don't cover pricing.", "findings": []}
     findings = []
+    want = "attendees" if "(attendance)" in user else "reactions" if "(engagement)" in user else None
     for sid, body in _SOURCE.findall(user):
-        first = re.split(r"(?<=[.!?])\s", body.strip())[0]
+        sentences = re.split(r"(?<=[.!?])\s", body.strip())
+        first = next((x for x in sentences if want and want in x), sentences[0])
         if "Page text for" in first:
             first = "The company announced a new launch for teams, with 12 partner integrations and 40% faster onboarding."
         findings.append({"claim": first, "source_id": sid, "date": "", "confidence": "High"})
@@ -127,3 +136,52 @@ def _actions(system, user):
                  "horizon": "This half", "source_ids": ["M9"]})
     return {"headline": "Rivals are winning attention with partner launches; answer the strongest two first (mock).",
             "actions": acts}
+
+
+def _event_leads(system, user):
+    rivals = re.findall(r"([A-Z][\w.]*) \(([\w.-]+\.\w+)\)", (re.search(r"Rivals: (.+)", user) or [None, ""])[1])
+    out = []
+    for name, _ in rivals:
+        out.append({"company": name, "name": f"{name} Summit 2026", "kind": "summit", "date": "2026-09", "importance": 5})
+        out.append({"company": name, "name": f"{name} Meetup Tour", "kind": "meetup", "date": "", "importance": 3})
+        out.append({"company": name, "name": f"{name} Summit", "kind": "summit", "date": "", "importance": 2})
+    return {"events": out}
+
+
+def _rival_events(system, user):
+    comp = (re.search(r"Competitor: (.+?) \(", user) or [None, "Rival"])[1]
+    blocks = {}
+    for block in re.split(r"^Q ", user, flags=re.M)[1:]:
+        dim = (re.search(r"^\S+ \(.+?, (\w+)\)", block) or [None, ""])[1]
+        blocks.setdefault(dim, []).extend(re.findall(r"^  - \[(\S+?)\] (.+?) \(date:", block, re.M))
+    att = next((c for _, c in blocks.get("attendance", []) if "attendees" in c), "")
+    att = (re.search(r"[\d,]+ attendees", att) or [""])[0]
+    eng = next((c for _, c in blocks.get("engagement", []) if "reactions" in c), "")
+    eng = (re.search(r"[\d,]+ reactions and [\d,]+ comments", eng) or [""])[0]
+    summit_ids = [i for i, _ in blocks.get("attendance", [])[:2] + blocks.get("engagement", [])[:1]]
+    tour_ids = [i for i, _ in blocks.get("events", [])[:1]]
+    events = []
+    if summit_ids:
+        events.append({"name": f"{comp} Summit 2026", "kind": "summit", "organizer": comp, "run_by_rival": True,
+                       "date": "2026-09", "location": "San Francisco",
+                       "format": "in-person", "audience": "product teams", "attendees": att, "engagement": eng,
+                       "coverage": "TechCrunch recap", "partners": "2 agency partners", "strength": "Strong",
+                       "why": "Mock: stated attendance and engagement.", "source_ids": summit_ids})
+    if tour_ids:
+        events.append({"name": f"{comp} Meetup Tour", "kind": "meetup", "organizer": comp, "run_by_rival": True,
+                       "date": "", "location": "",
+                       "format": "in-person", "audience": "designers", "attendees": "10,000 attendees",
+                       "engagement": "", "coverage": "", "partners": "", "strength": "Strong",
+                       "why": "Mock: invents an attendance number the checks should catch.",
+                       "source_ids": tour_ids})
+    if tour_ids:  # two more planted mistakes: a look-alike company's event, and an old one
+        events.append({"name": "City TechWeek", "kind": "sponsorship", "organizer": f"{comp} Development Services",
+                       "run_by_rival": False, "date": "2026-04", "location": "St. Louis", "format": "in-person",
+                       "strength": "Weak", "why": "Mock: a different company with a similar name.",
+                       "source_ids": tour_ids})
+        events.append({"name": f"{comp} Enterprise 2020", "kind": "conference", "organizer": comp,
+                       "run_by_rival": True, "date": "2020", "location": "", "format": "unknown",
+                       "strength": "Weak", "why": "Mock: an old event from an undated page.", "source_ids": tour_ids})
+    return {"summary": f"{comp} runs a flagship summit plus a meetup tour (mock).",
+            "positioning": f"{comp} uses events to look like the community leader (mock).",
+            "events": events, "threat": "Medium", "threat_why": "Big flagship event, overlapping audience (mock)."}

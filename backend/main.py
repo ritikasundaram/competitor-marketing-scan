@@ -19,7 +19,7 @@ import threading
 import sys
 import urllib.request
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, List, Literal, Optional
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
@@ -66,6 +66,8 @@ class Settings(BaseModel):
     max_rounds: int = Field(2, ge=1, le=3)
     max_age_days: int = Field(365, ge=0, le=3650)
     approve_questions: bool = False
+    focus: Literal["general", "field"] = "general"
+    max_events_per_rival: int = Field(2, ge=1, le=4)
     planner_model: str = ""
     researcher_model: str = ""
 
@@ -161,6 +163,7 @@ def list_reports():
         if d.get("version") != report_mod.VERSION:
             continue
         items.append({"run_id": d["run_id"], "created": d["created"], "company": d["company"]["name"],
+                      "focus": d.get("focus") or "general",
                       "rivals": [r["name"] for r in d["rivals"]], "mock": d["settings"].get("mock"),
                       "actions": d["stats"]["actions"]})
     return {"reports": items}

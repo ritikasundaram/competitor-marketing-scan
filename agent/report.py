@@ -50,9 +50,11 @@ def build_data(state: dict) -> dict:
         "sources": sources,
         "dropped": dropped,
         "reviews": state.get("reviews") or [],
+        "focus": settings.get("focus") or "general",
         "settings": {k: settings.get(k) for k in ("mock", "max_rivals", "questions_per_rival", "own_questions",
                                                    "max_attempts", "max_rounds", "max_age_days",
-                                                   "approve_questions", "models")},
+                                                   "approve_questions", "models", "focus",
+                                                   "max_events_per_rival")},
         "stats": {
             "questions": len(answers),
             "answered": status.get("answered", 0),
@@ -69,6 +71,11 @@ def build_data(state: dict) -> dict:
             "actions": len(plan.get("actions") or []),
             "actions_dropped": len(plan.get("dropped") or []),
             "actions_flagged": sum(1 for a in plan.get("actions") or [] if a.get("flags")),
+            "events": sum(len(p.get("events") or []) for p in profiles),
+            "events_with_attendance": sum(1 for p in profiles for e in p.get("events") or [] if e.get("attendees")),
+            "events_with_engagement": sum(1 for p in profiles for e in p.get("events") or [] if e.get("engagement")),
+            "event_metrics_flagged": sum(len(e.get("flags") or []) for p in profiles for e in p.get("events") or []),
+            "events_dropped": sum(len(p.get("dropped_events") or []) for p in profiles),
         },
         "trace": {"session_id": state["run_id"],
                   "trace_id": format(span_ctx.trace_id, "032x") if span_ctx.is_valid else ""},
@@ -81,7 +88,8 @@ def _link(sources: dict, ids: list) -> str:
 
 def to_markdown(d: dict) -> str:
     c, st, src = d["company"], d["stats"], d["sources"]
-    out = [f"# Competitor scan: {c['name']}", "",
+    title = "Field marketing scan" if d.get("focus") == "field" else "Competitor scan"
+    out = [f"# {title}: {c['name']}", "",
            f"Run `{d['run_id']}` · {d['created'][:10]} · rivals: {', '.join(r['name'] for r in d['rivals'])}"
            + (" · **mock data**" if d["settings"].get("mock") else ""), ""]
     plan = d["plan"]
@@ -92,6 +100,25 @@ def to_markdown(d: dict) -> str:
                 f"   - First step: {a['first_step']}", f"   - Evidence: {_link(src, a['source_ids'])}"]
         out += [f"   - ⚠ {fl}" for fl in a.get("flags") or []]
     out += [""]
+    events = [(p["rival"]["name"], e) for p in d["profiles"] for e in p.get("events") or []]
+    if events:
+        out += ["## Rival events", "",
+                "| Rival | Event | Type | When | Where | Attendees | Social engagement | Strength | Sources |",
+                "|---|---|---|---|---|---|---|---|---|"]
+        cell = lambda v: (v or "–").replace("|", "/")
+        for rival, e in events:
+            where = e["location"] or (e["format"] if e["format"] != "unknown" else "")
+            out.append(f"| {cell(rival)} | {cell(e['name'])} | {e['kind']} | {cell(e['date'])} | {cell(where)} | "
+                       f"{cell(e['attendees'])} | {cell(e['engagement'])} | {e['strength']} | "
+                       f"{_link(src, e['source_ids'])} |")
+        gone = [(p["rival"]["name"], x) for p in d["profiles"] for x in p.get("dropped_events") or []]
+        if gone:
+            out += ["", "Events left out:"] + [f"- {r}, {x['name']}: {x['reason']}" for r, x in gone]
+        flagged = [(r, e) for r, e in events if e.get("flags")]
+        if flagged:
+            out += ["", "Numbers removed because no source shows them:"]
+            out += [f"- {r}, {e['name']}: {'; '.join(e['flags'])}" for r, e in flagged]
+        out.append("")
     out += ["## Rivals", ""]
     for p in d["profiles"]:
         r = p["rival"]

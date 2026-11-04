@@ -98,6 +98,98 @@ class FullRunTests(unittest.TestCase):
         self.assertEqual(self.data["trace"]["session_id"], self.run_id)
 
 
+class FieldMarketingTests(unittest.TestCase):
+    """Field focus: find rivals' events, then dig into attendance and social engagement."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = TempReports().__enter__()
+        searches = []
+        real_search = exa.MockExa.search
+
+        def spy(self, query, **kw):
+            searches.append((query, kw.get("include_domains")))
+            return real_search(self, query, **kw)
+
+        with umock.patch.object(exa.MockExa, "search", spy):
+            cls.events, _ = run_all(settings={"focus": "field", "max_rivals": 2, "questions_per_rival": 2,
+                                              "own_questions": 1})
+        cls.searches = searches
+        cls.done = cls.events[-1]
+        cls.data = json.loads((cls.tmp.path / cls.done["report"]["file"]).read_text())
+        cls.md = (cls.tmp.path / cls.done["report"]["file"].replace(".json", ".md")).read_text()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.__exit__(None, None, None)
+
+    def qs(self, rnd):
+        return [a["question"] for a in self.data["questions"] if a["question"]["round"] == rnd]
+
+    def test_first_round_asks_about_events(self):
+        rivals = [q for q in self.qs(1) if not q["is_self"]]
+        self.assertEqual(len(rivals), 4)
+        self.assertTrue(all(q["dimension"] == "events" for q in rivals))
+
+    def test_main_events_get_attendance_and_engagement_questions(self):
+        second = self.qs(2)
+        self.assertEqual(len(second), 2 * 2 * 2)  # 2 rivals x 2 events x (attendance + engagement)
+        self.assertEqual({q["dimension"] for q in second}, {"attendance", "engagement"})
+        self.assertFalse(any("Summit?" in q["question"] and "2026" not in q["question"] for q in second))
+        self.assertIn("Events picked", self.data["reviews"][0]["gaps"])
+
+    def test_engagement_is_searched_on_social_sites(self):
+        social = [d for q, d in self.searches if d]
+        self.assertEqual(len(social), 4)
+        self.assertTrue(all("linkedin.com" in d and "youtube.com" in d for d in social))
+
+    def test_event_figures_are_quoted_from_sources(self):
+        events = [e for p in self.data["profiles"] for e in p["events"]]
+        summits = [e for e in events if "Summit" in e["name"]]
+        self.assertTrue(summits and all(e["attendees"] == "3,000 attendees" for e in summits))
+        self.assertTrue(all(e["engagement"].startswith("1,240 reactions") for e in summits))
+        self.assertTrue(all(e["strength"] == "Strong" and not e["flags"] for e in summits))
+
+    def test_invented_figures_are_removed_and_flagged(self):
+        tours = [e for p in self.data["profiles"] for e in p["events"] if "Tour" in e["name"]]
+        self.assertTrue(tours)
+        for e in tours:
+            self.assertEqual(e["attendees"], "")
+            self.assertEqual(e["flags"], ["attendees not found in sources: 10,000 attendees"])
+            self.assertEqual(e["strength"], "Medium")
+        self.assertEqual(self.data["stats"]["event_metrics_flagged"], len(tours))
+
+    def test_look_alike_and_old_events_are_left_out(self):
+        for p in self.data["profiles"]:
+            names = [e["name"] for e in p["events"]]
+            self.assertNotIn("City TechWeek", names)
+            self.assertFalse(any("2020" in n for n in names))
+            reasons = {x["name"]: x["reason"] for x in p["dropped_events"]}
+            self.assertEqual(reasons["City TechWeek"], f"run by {p['rival']['name']} Development Services, "
+                                                       f"not {p['rival']['name']}")
+            self.assertTrue(reasons[f"{p['rival']['name']} Enterprise 2020"].startswith("old: held 2020"))
+        self.assertIn("Events left out:", self.md)
+
+    def test_engagement_alone_does_not_make_an_event_strong(self):
+        from agent.graph import event_date
+        self.assertEqual(event_date("2026-05").isoformat(), "2026-05-28")
+        self.assertEqual(event_date("2020").year, 2020)
+        self.assertIsNone(event_date("soon"))
+
+    def test_report_has_the_events_table(self):
+        self.assertEqual(self.data["focus"], "field")
+        self.assertEqual(self.data["stats"]["events"], 4)
+        self.assertEqual(self.data["stats"]["events_with_attendance"], 2)
+        self.assertIn("# Field marketing scan: Figma", self.md)
+        self.assertIn("| Rival | Event | Type |", self.md)
+        self.assertIn("10,000 attendees", self.md)  # listed under 'numbers removed'
+
+    def test_actions_still_cite_rival_events(self):
+        self.assertTrue(self.data["plan"]["actions"])
+        ids = {i for p in self.data["profiles"] for e in p["events"] for i in e["source_ids"]}
+        self.assertTrue(all(set(a["source_ids"]) <= ids for a in self.data["plan"]["actions"]))
+
+
 class FollowUpTests(unittest.TestCase):
     def test_follow_ups_repeating_a_failed_question_are_skipped(self):
         from agent.schemas import AtomicQuestion, FollowUps

@@ -99,11 +99,19 @@ def _doc(x, doc_id: str) -> dict:
             "score": getattr(x, "score", None)}
 
 
-def search(client, query: str, id_prefix: str, num: int = 6) -> list:
-    """Search by meaning; results get ids like Q3-1 that the AI must cite."""
+SOCIAL_DOMAINS = ["linkedin.com", "x.com", "twitter.com", "youtube.com", "instagram.com"]
+
+
+def search(client, query: str, id_prefix: str, num: int = 6, include_domains: Optional[list] = None) -> list:
+    """Search by meaning; results get ids like Q3-1 that the AI must cite.
+
+    include_domains limits results to those sites (e.g. SOCIAL_DOMAINS for event engagement).
+    """
+    extra = {"include_domains": include_domains} if include_domains else {}
     with tracing.span("exa.search", KIND.RETRIEVER, input=query,
-                      **{"exa.type": "auto", "exa.num_results": num}) as s:
-        r = _call(client.search, query, type="auto", num_results=num, contents={"highlights": True})
+                      **{"exa.type": "auto", "exa.num_results": num,
+                         "exa.include_domains": ",".join(include_domains or [])}) as s:
+        r = _call(client.search, query, type="auto", num_results=num, contents={"highlights": True}, **extra)
         docs = [_doc(x, f"{id_prefix}-{i + 1}") for i, x in enumerate((r.results or [])[:num])]
         s.documents(docs)
         s.output({"results": len(docs)})
@@ -164,6 +172,16 @@ class MockExa:
                                   score=0.8)],
                       output=NS(content={"rivals": _MOCK_RIVALS}))
         m = re.search(r"([A-Z][\w.]*)\s*\(([\w.-]+\.\w+)\)", query)
+        if kwargs.get("include_domains"):  # social search: posts about an event, with engagement counts
+            name = m.group(1) if m else "Acme"
+            recent = (datetime.date.today() - datetime.timedelta(days=30)).isoformat()
+            return NS(output=None, results=[
+                NS(url=f"https://www.linkedin.com/posts/{name.lower()}_summit-recap", title=f"{name} Summit recap",
+                   published_date=recent, score=0.9,
+                   highlights=[f"{name} Summit recap: 1,240 reactions and 85 comments on our launch keynote."]),
+                NS(url=f"https://www.youtube.com/watch?v={name.lower()}keynote", title=f"{name} Summit keynote",
+                   published_date=recent, score=0.8, highlights=[f"{name} Summit keynote, 48K views."]),
+            ][: kwargs.get("num_results", 6)])
         name, dom = (m.group(1), m.group(2)) if m else ("Acme", "acme.com")
         slug = re.sub(r"[^a-z]+", "-", query.lower())[:40].strip("-")
         recent = (datetime.date.today() - datetime.timedelta(days=40)).isoformat()
@@ -188,10 +206,15 @@ class MockExa:
         time.sleep(self.delay)
         out = []
         for u in urls:
-            if "linkedin.com" in u:
+            if "linkedin.com/posts" in u and "_summit" in u:
+                name = u.split("/posts/")[1].split("_")[0].capitalize()
+                text = f"{name} Summit recap: 1,240 reactions and 85 comments on our launch keynote."
+            elif "linkedin.com" in u:
                 text = "A restaurant pop-up built by an events agency for a dessert brand."
             elif "businesswire" in u:
                 text = f"{u.rstrip('/').split('/')[-1].capitalize()} announces a partnership with a design agency."
+            elif "youtube.com" in u:
+                text = "Summit keynote video, 48K views."
             elif "techcrunch" in u:
                 name = u.rstrip("/").split("/")[-1].split("-")[0].capitalize()
                 text = (f"{name} is pushing into enterprise. Its user event drew 3,000 attendees and it signed "

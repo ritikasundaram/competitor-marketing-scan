@@ -204,3 +204,25 @@ def similar(a: str, b: str, threshold: float = 0.5) -> bool:
     if not wa or not wb:
         return False
     return len(wa & wb) / min(len(wa), len(wb)) >= threshold
+
+
+_PERSON = r"[A-Z][a-zà-ÿ'\-]+ [A-Z][a-zà-ÿ'\-]+"
+_NOT_PEOPLE = {"Paris Web", "Ubuntu India", "Design Meetup", "Y Combinator", "Framer Conf", "Penpot Fest"}
+
+
+def scrub_people(text: str, keep: set | None = None) -> str:
+    """Remove private individuals' names from event metrics ('A B, C D and 121 others' -> '121+ others').
+
+    A rough rule: two capitalized words in a row read as a person, unless they're a known
+    organization or event name (keep). Numbers are checked before this runs.
+    """
+    keep = (keep or set()) | _NOT_PEOPLE
+    if not text:
+        return text
+    out = re.sub(rf"(?:{_PERSON},\s*)*{_PERSON},?\s+and\s+(\d[\d,]*)\s+others", r"\1+ others", text)
+    out = re.sub(r"\s*\((?:hosted|organi[sz]ed|posted) by [^)]*\)", "", out)
+
+    def possessive(m):
+        return m.group(0) if m.group(1) in keep else "an attendee's"
+    out = re.sub(rf"\b({_PERSON})'s\b", possessive, out)
+    return re.sub(r"\s{2,}", " ", out).strip()
