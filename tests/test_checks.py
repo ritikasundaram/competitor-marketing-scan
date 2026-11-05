@@ -1,95 +1,131 @@
-"""Unit tests for the fact checks: dates, numbers, wrong-company matches."""
+"""The fact checks and the rubric: plain rules, so they're tested directly."""
 import datetime
 import unittest
 
-from helpers import runner
+import helpers  # noqa: F401  (sets the import path)
+from agent import checks
 
 TODAY = datetime.date(2026, 11, 3)
+SKETCH = {"name": "Sketch", "domain": "sketch.com"}
+
+
+def src(url, text="", date="", title=""):
+    return {"url": url, "text": text, "date": date, "title": title}
 
 
 class DateTests(unittest.TestCase):
     def test_dates_in_urls(self):
-        self.assertEqual(runner._date_from_url("https://www.businesswire.com/news/home/20230629787067/en/x"),
+        self.assertEqual(checks.date_from_url("https://www.businesswire.com/news/home/20230629787067/en/x"),
                          datetime.date(2023, 6, 29))
-        self.assertEqual(runner._date_from_url("https://example.com/blog/2025/03/launch"), datetime.date(2025, 3, 1))
-        self.assertEqual(runner._date_from_url("https://www.axure.com/changelog/2026-09-24"), datetime.date(2026, 9, 24))
+        self.assertEqual(checks.date_from_url("https://example.com/blog/2025/03/launch"), datetime.date(2025, 3, 1))
+        self.assertEqual(checks.date_from_url("https://www.axure.com/changelog/2026-09-24"),
+                         datetime.date(2026, 9, 24))
 
     def test_long_numeric_ids_are_not_dates(self):
-        self.assertIsNone(runner._date_from_url(
-            "https://www.linkedin.com/posts/x-activity-7511702329889366017-Hz_8"))
+        self.assertIsNone(checks.date_from_url("https://www.linkedin.com/posts/x-activity-7511702329889366017-Hz_8"))
 
-    def test_old_campaign_is_excluded(self):
-        c = {"url": "https://www.businesswire.com/news/home/20230629787067/en/x", "date": ""}
-        runner.verify_campaigns([c], 365, TODAY)
-        self.assertTrue(c["stale"])
-        self.assertTrue(c["excluded"].startswith("old: published 2023-06-29"))
-
-    def test_later_url_date_wins_over_older_page_date(self):
-        c = {"url": "https://www.axure.com/changelog/2026-09-24", "date": "2025-06-12"}
-        runner.verify_campaigns([c], 365, TODAY)
-        self.assertEqual(c["date"], "2026-09-24")
-        self.assertFalse(c["stale"])
-
-    def test_max_age_zero_keeps_everything(self):
-        c = {"url": "https://x.com/2019/01/05/a", "date": ""}
-        runner.verify_campaigns([c], 0, TODAY)
-        self.assertFalse(c["stale"])
-
-    def test_undated_is_flagged_not_excluded(self):
-        c = {"url": "https://x.com/a", "date": ""}
-        runner.verify_campaigns([c], 365, TODAY)
-        self.assertIn("date unknown", c["flags"])
-        self.assertEqual(c["excluded"], "")
-
-    def test_future_dates_are_ignored(self):
-        c = {"url": "https://x.com/a", "date": "2030-01-01"}
-        runner.verify_campaigns([c], 365, TODAY)
-        self.assertIn("date unknown", c["flags"])
+    def test_later_url_date_wins_and_future_is_ignored(self):
+        self.assertEqual(checks.best_date("2025-06-12", "https://x.com/changelog/2026-09-24", TODAY),
+                         datetime.date(2026, 9, 24))
+        self.assertIsNone(checks.best_date("2030-01-01", "https://x.com/a", TODAY))
 
 
 class NumberTests(unittest.TestCase):
     def test_missing_numbers_are_reported_with_units(self):
-        self.assertEqual(runner.unverified_numbers("7.7% CTR and 200K reach, 10+ events", "ten events"),
+        self.assertEqual(checks.unverified_numbers("7.7% CTR and 200K reach, 10+ events", "ten events"),
                          ["7.7%", "200K"])
 
     def test_equivalent_forms_match(self):
         ev = "More than 300 applications in 3 months, 150,000 reach, eight events in seven cities."
-        self.assertEqual(runner.unverified_numbers(
+        self.assertEqual(checks.unverified_numbers(
             "Over 300 applications in three months, 150K+ reach, 8 events across 7 cities", ev), [])
 
-    def test_unverified_number_lowers_confidence(self):
-        c = {"url": "https://x.com/a", "date": "2026-10-01", "signal": "7.7% CTR",
-             "snippet": "great launch", "confidence": "high"}
-        runner.verify_campaigns([c], 365, TODAY)
-        self.assertEqual(c["confidence"], "Low")
-        self.assertTrue(any(f.startswith("numbers not found") for f in c["flags"]))
-
-    def test_casing_is_normalized(self):
-        c = {"url": "https://x.com/a", "date": "2026-10-01", "strength": "strong", "confidence": "medium"}
-        runner.verify_campaigns([c], 365, TODAY)
-        self.assertEqual((c["strength"], c["confidence"]), ("Strong", "Medium"))
+    def test_years_are_not_claims(self):
+        self.assertEqual(checks.unverified_numbers("Launched in 2026 with 12 partners", "12 partners"), [])
 
 
-class RelevanceTests(unittest.TestCase):
-    def test_own_site_always_counts(self):
-        self.assertIsNone(runner.relevance({"url": "https://updates.uxpin.com/x", "about_competitor": False},
-                                           "UXPin", "uxpin.com"))
+class FindingTests(unittest.TestCase):
+    def setUp(self):
+        self.sources = {
+            "Q1-1": src("https://www.sketch.com/blog/ai", "Sketch AI drew 300 signups.", "2026-10-01"),
+            "Q1-2": src("https://www.linkedin.com/posts/sketch-events_popup", "A restaurant pop-up.", "2026-10-01"),
+            "Q1-3": src("https://www.businesswire.com/news/home/20230629787067/en/sketch", "Sketch partnership."),
+            "Q1-4": src("https://techcrunch.com/sketch", "Sketch ran a webinar series."),
+        }
 
-    def test_grader_verdict_false_excludes(self):
-        reason = runner.relevance({"url": "https://linkedin.com/x", "about_competitor": "false",
-                                   "run_by": "Sketch Events"}, "Sketch", "sketch.com")
-        self.assertEqual(reason, "not Sketch: run by Sketch Events")
+    def check(self, *findings, max_age=365):
+        return checks.check_findings(list(findings), self.sources, SKETCH, max_age, TODAY)
 
-    def test_no_verdict_needs_a_mention(self):
-        self.assertIsNone(runner.relevance({"url": "https://tc.com/x", "snippet": "Notion announced"},
-                                           "Notion", "notion.so"))
-        self.assertEqual(runner.relevance({"url": "https://tc.com/x", "snippet": "Coach and Spotify"},
-                                          "Notion", "notion.so"), "doesn't mention Notion")
+    def test_good_finding_is_kept_clean(self):
+        kept, dropped = self.check({"claim": "Sketch AI drew 300 signups", "source_id": "Q1-1"})
+        self.assertEqual((len(kept), dropped), (1, []))
+        self.assertEqual(kept[0]["flags"], [])
+        self.assertEqual(kept[0]["date"], "2026-10-01")
 
-    def test_off_topic_wins_over_old_as_the_reason(self):
-        c = {"url": "https://x.com/2023/01/05/a", "about_competitor": False, "run_by": "Sketch Restaurant"}
-        runner.verify_campaigns([c], 365, TODAY, competitor=("Sketch", "sketch.com"))
-        self.assertEqual(c["excluded"], "not Sketch: run by Sketch Restaurant")
+    def test_made_up_citation_is_dropped(self):
+        _, dropped = self.check({"claim": "A billboard", "source_id": "Q99-1"})
+        self.assertIn("isn't a source it read", dropped[0]["reason"])
+
+    def test_wrong_company_is_dropped(self):
+        _, dropped = self.check({"claim": "A pop-up", "source_id": "Q1-2"})
+        self.assertEqual(dropped[0]["reason"], "source doesn't mention Sketch")
+
+    def test_search_excerpt_counts_when_page_wasnt_read(self):
+        self.sources["Q1-5"] = {"url": "https://adage.com/x", "title": "Brand campaign", "text": "",
+                                "snippet": "Sketch's new brand campaign targets teams.", "date": "2026-10-01"}
+        kept, dropped = self.check({"claim": "A brand campaign", "source_id": "Q1-5"})
+        self.assertEqual((len(kept), dropped), (1, []))
+
+    def test_old_is_dropped_unless_age_limit_is_off(self):
+        _, dropped = self.check({"claim": "Partnership", "source_id": "Q1-3"})
+        self.assertTrue(dropped[0]["reason"].startswith("old: published 2023-06-29"))
+        kept, _ = self.check({"claim": "Partnership", "source_id": "Q1-3"}, max_age=0)
+        self.assertEqual(len(kept), 1)
+
+    def test_undated_is_flagged_and_unbacked_number_lowers_confidence(self):
+        kept, _ = self.check({"claim": "Webinar series hit 7.7% CTR", "source_id": "Q1-4", "confidence": "High"})
+        self.assertIn("date unknown", kept[0]["flags"])
+        self.assertIn("numbers not found in source: 7.7%", kept[0]["flags"])
+        self.assertEqual(kept[0]["confidence"], "Low")
+
+
+class RubricTests(unittest.TestCase):
+    SOURCES = {"A": src("https://www.sketch.com/a"), "B": src("https://techcrunch.com/b"),
+               "C": src("https://theverge.com/c")}
+
+    def test_two_outside_sources_allow_strong(self):
+        self.assertEqual(checks.rubric_cap("Strong", ["B", "C"], self.SOURCES, "sketch.com", False), ("Strong", ""))
+
+    def test_one_outside_source_caps_at_medium(self):
+        self.assertEqual(checks.rubric_cap("Strong", ["A", "B"], self.SOURCES, "sketch.com", False),
+                         ("Medium", "lowered from Strong: only one outside source"))
+
+    def test_own_pages_only_cap_at_medium_but_a_verified_number_allows_strong(self):
+        self.assertEqual(checks.rubric_cap("Strong", ["A"], self.SOURCES, "sketch.com", False)[0], "Medium")
+        self.assertEqual(checks.rubric_cap("Strong", ["A"], self.SOURCES, "sketch.com", True)[0], "Strong")
+
+    def test_never_raised_and_odd_values_become_weak(self):
+        self.assertEqual(checks.rubric_cap("Weak", ["B", "C"], self.SOURCES, "sketch.com", True), ("Weak", ""))
+        self.assertEqual(checks.rubric_cap("great", [], self.SOURCES, "sketch.com", False)[0], "Weak")
+
+    def test_similar_questions(self):
+        self.assertTrue(checks.similar(
+            "What changes to pricing, packaging, or enterprise tiers did Axure RP introduce over the past year?",
+            "What new packaging, enterprise licensing, or pricing tiers did Axure RP introduce for engineering teams?"))
+        self.assertFalse(checks.similar("Which customer stories has Axure published?",
+                                        "What pricing changes did Axure make?"))
+
+    def test_people_are_scrubbed_from_event_metrics(self):
+        self.assertEqual(checks.scrub_people("Mathieu Boulet, Yan Nerovny and 121 others listed on Luma"),
+                         "121+ others listed on Luma")
+        self.assertEqual(checks.scrub_people("30 reactions on Louis Chance's announcement post"),
+                         "30 reactions on an attendee's announcement post")
+        self.assertEqual(checks.scrub_people("4 reactions on Paris Web's post"), "4 reactions on Paris Web's post")
+        self.assertEqual(checks.scrub_people("Framer (hosted by Virgil Caffier)"), "Framer")
+        self.assertEqual(checks.scrub_people("600 creators"), "600 creators")
+
+    def test_ids_are_cleaned(self):
+        self.assertEqual(checks.clean_ids(["C3,", " q2-1 ", "C3", "[Q4-2]; Q5-1"]), ["C3", "Q2-1", "Q4-2", "Q5-1"])
 
 
 if __name__ == "__main__":

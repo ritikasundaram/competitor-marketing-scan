@@ -1,103 +1,76 @@
-"""Backend API tests (mock mode only; no Exa calls)."""
+"""The web API: start, pause, resume, saved reports, and input checks."""
 import json
+import os
 import unittest
 
-from fastapi.testclient import TestClient
+os.environ["PHOENIX_TRACING"] = "0"
+from helpers import TempReports  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
 
-from helpers import TempOutput  # also puts the project on sys.path
-import backend.main as backend
+from backend import main  # noqa: E402
+
+client = TestClient(main.app)
+START = {"company": {"name": "Figma", "domain": "figma.com"},
+         "settings": {"mock": True, "max_rivals": 2, "questions_per_rival": 2}}
 
 
-def sse_events(text):
-    return [json.loads(line[5:]) for line in text.splitlines() if line.startswith("data:")]
+def events(resp):
+    return [json.loads(line[6:]) for line in resp.text.splitlines() if line.startswith("data: ")]
 
 
-class BackendTests(unittest.TestCase):
-    def setUp(self):
-        self.out = TempOutput(backend).__enter__()
-        self.api = TestClient(backend.app)
+class ApiTests(unittest.TestCase):
+    def test_health_hides_keys(self):
+        body = client.get("/api/health").json()
+        self.assertIn("has_exa_key", body)
+        self.assertNotIn("key", json.dumps(body["models"]))
 
-    def tearDown(self):
-        self.out.__exit__(None, None, None)
+    def test_start_pause_resume_and_open_the_report(self):
+        with TempReports():
+            first = events(client.post("/api/scans", json=START))
+            pause = first[-1]
+            self.assertEqual((pause["event"], pause["kind"]), ("interrupt", "confirm_rivals"))
+            second = events(client.post(f"/api/scans/{pause['run_id']}/resume", json={"value": pause["rivals"][:1]}))
+            done = second[-1]
+            self.assertEqual(done["event"], "done")
+            self.assertTrue(any(e["event"] == "question" for e in second))
 
-    def test_health(self):
-        self.assertTrue(self.api.get("/api/health").json()["ok"])
+            listed = client.get("/api/reports").json()["reports"]
+            self.assertEqual([r["run_id"] for r in listed], [done["run_id"]])
+            self.assertEqual(len(listed[0]["rivals"]), 1)
 
-    def test_discover_mock(self):
-        r = self.api.post("/api/discover", json={"name": "Acme", "mock": True})
-        self.assertEqual([c["name"] for c in r.json()["competitors"]], ["Canva", "Miro", "Notion"])
+            got = client.get(f"/api/reports/{done['run_id']}").json()
+            self.assertEqual(got["data"]["run_id"], done["run_id"])
+            self.assertIn("## Action plan", got["markdown"])
 
-    def test_scan_then_list_and_open(self):
-        r = self.api.post("/api/scan", json={"company": {"name": "Acme"}, "mock": True, "synthesis": "template"})
-        events = sse_events(r.text)
-        self.assertEqual([e["event"] for e in events][-1], "done")
-        run_id = events[-1]["run_id"]
+    def test_field_focus_is_accepted_and_listed(self):
+        body = {**START, "settings": {**START["settings"], "focus": "field"}}
+        with TempReports():
+            pause = events(client.post("/api/scans", json=body))[-1]
+            done = events(client.post(f"/api/scans/{pause['run_id']}/resume", json={"value": pause["rivals"]}))[-1]
+            self.assertEqual(done["event"], "done")
+            listed = client.get("/api/reports").json()["reports"]
+            self.assertEqual(listed[0]["focus"], "field")
+        bad = {**START, "settings": {**START["settings"], "focus": "events"}}
+        self.assertEqual(client.post("/api/scans", json=bad).status_code, 422)
 
-        runs = self.api.get("/api/runs").json()["runs"]
-        self.assertEqual(runs[0]["run_id"], run_id)
-        self.assertEqual(runs[0]["company"], "Acme")
-        self.assertTrue(runs[0]["has_data"])
+    def test_given_rivals_are_used(self):
+        body = {**START, "company": {**START["company"], "rivals": [{"name": "Sketch", "domain": "sketch.com"}]}}
+        with TempReports():
+            pause = events(client.post("/api/scans", json=body))[-1]
+        self.assertEqual([r["name"] for r in pause["rivals"]], ["Sketch"])
 
-        rep = self.api.get(f"/api/reports/{run_id}").json()
-        self.assertIn("# Competitor Marketing Scan", rep["markdown"])
-        self.assertEqual(rep["data"]["run_id"], run_id)
-        self.assertTrue(self.api.get(f"/api/traces/{run_id}").json()["spans"])
+    def test_bad_ids_and_inputs_are_rejected(self):
+        self.assertEqual(client.get("/api/reports/../../etc").status_code, 404)
+        self.assertEqual(client.get("/api/reports/abc").status_code, 404)
+        self.assertEqual(client.post("/api/scans/zzzzzzzz/resume", json={"value": []}).status_code, 404)
+        self.assertEqual(client.post("/api/scans/0123abcd/resume", json={"value": "x"}).status_code, 422)
+        bad = {**START, "settings": {"mock": True, "max_rivals": 50}}
+        self.assertEqual(client.post("/api/scans", json=bad).status_code, 422)
 
-    def test_text_only_report_has_no_data(self):
-        (self.out.path / "reports" / "2026-01-01_competitor-scan_abc123.md").write_text(
-            "# Competitor Marketing Scan\n\nMy company: **Old Co**\n")
-        rep = self.api.get("/api/reports/abc123").json()
-        self.assertIsNone(rep["data"])
-        self.assertEqual(self.api.get("/api/runs").json()["runs"][0]["company"], "Old Co")
-
-    def test_bad_ids_are_rejected(self):
-        self.assertEqual(self.api.get("/api/reports/nope").status_code, 404)
-        self.assertEqual(self.api.get("/api/reports/..%2f..%2fREADME").status_code, 404)
-        self.assertEqual(self.api.get("/api/traces/xyz").status_code, 404)
-
-    def test_real_scan_without_key_is_a_clear_error(self):
-        saved = backend.os.environ.pop("EXA_API_KEY", None)
-        try:
-            r = self.api.post("/api/discover", json={"name": "Acme", "mock": False})
-            self.assertEqual(r.status_code, 400)
-            self.assertIn("EXA_API_KEY", r.json()["detail"])
-        finally:
-            if saved is not None:
-                backend.os.environ["EXA_API_KEY"] = saved
-
-    def test_discovery_with_bad_key_is_a_clear_error(self):
-        class BadExa:
-            def search(self, *a, **k):
-                raise RuntimeError("Request failed with status code 401: INVALID_API_KEY")
-        saved = backend._exa_client
-        backend._exa_client = lambda: BadExa()
-        try:
-            r = self.api.post("/api/discover", json={"name": "Acme", "mock": False})
-        finally:
-            backend._exa_client = saved
-        self.assertEqual(r.status_code, 502)
-        self.assertIn("rejected the API key", r.json()["detail"])
-
-    def test_scan_with_bad_key_sends_error_event(self):
-        class BadExa:
-            def search(self, *a, **k):
-                raise RuntimeError("401 INVALID_API_KEY")
-        saved = backend._exa_client
-        backend._exa_client = lambda: BadExa()
-        try:
-            r = self.api.post("/api/scan", json={"company": {"name": "Acme"}, "mock": False,
-                                                 "competitors": [{"name": "Sketch", "domain": "sketch.com"}],
-                                                 "synthesis": "template"})
-        finally:
-            backend._exa_client = saved
-        last = sse_events(r.text)[-1]
-        self.assertEqual(last["event"], "error")
-        self.assertIn("rejected the API key", last["message"])
-
-    def test_old_judge_field_is_ignored(self):
-        r = self.api.post("/api/scan", json={"company": {"name": "Acme"}, "mock": True,
-                                             "synthesis": "template", "judge": "ollama"})
-        self.assertEqual(sse_events(r.text)[-1]["event"], "done")
+    def test_old_v1_reports_are_not_listed(self):
+        with TempReports() as t:
+            (t.path / "2026-09-30_scan_0123abcd.json").write_text(json.dumps({"run_id": "0123abcd"}))
+            self.assertEqual(client.get("/api/reports").json()["reports"], [])
 
 
 if __name__ == "__main__":

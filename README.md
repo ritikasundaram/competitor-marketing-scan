@@ -1,76 +1,191 @@
-# Competitor Marketing Scan (Exa + Phoenix/Langfuse)
+# Competitor Scan: an agent that researches your rivals with Exa
 
-Enter your company → it finds your competitors → searches the web for their recent marketing
-campaigns → rates each one on public signals → checks the facts → writes recommendations for you,
-each linked to the campaigns behind it. Manual-run only, free-tier friendly.
+Tell it your company. A LangGraph agent finds your competitors and breaks the job into small,
+answerable questions. Parallel researchers answer each one with Exa, check their own answers and
+retry with a better search when they fall short. The agent then reviews what's missing, profiles
+each rival and writes a ranked action plan. Every claim links to a page a researcher actually read.
 
-Effectiveness is **public proxies only** (press, social, SEO, partnerships), never ROI or spend.
-Every claim has a URL.
+Public signals only (press, partners, events, social): never revenue, spend or ROI.
 
-![Dashboard overview: headline numbers and campaign strength by competitor](docs/screenshots/dashboard-overview.png)
+## How the agent works
 
-![Recommendations, each linked to the competitor campaigns behind it, next to the fact-check counts](docs/screenshots/recommendations.png)
+```
+understand ─ reads your own site (Exa), notes what you already offer
+find_rivals ─ Exa search with an output schema → name, domain, reason
+confirm_rivals ⏸ you untick non-rivals or add one (always on)
+plan_questions ─ atomic questions: one company, one topic, one time window
+approve_questions ⏸ edit / remove / add questions (toggle, off by default)
+research ×N (in parallel) ─ each question gets its own researcher sub-graph:
+    search (Exa) → read (Exa) → answer (AI) → check (rules) → judge (AI)
+       ↑──────────── retry with a better search if not answered ─┘
+review_gaps ─ asks for up to 4 follow-up questions → one more research round
+profile_rival ×N (in parallel) ─ campaigns rated with the rubric, threat level
+plan_actions ─ ranked actions: what, why, first step, effort, impact, evidence
+write_report ─ reports/<date>_scan_<run>.json (dashboard) + .md
+```
 
-**Sample output:** a real scan for Figma against Penpot, Sketch, UXPin and Webflow, in
-[markdown](examples/sample-report-figma.md) and as the [dashboard data](examples/sample-report-figma.json).
-Page excerpts are removed from the sample; the links and ratings are as the scan produced them.
+**Field marketing focus** (Settings → Focus, or `--focus field`): the same agent, aimed at rivals' events.
+1. Round 1 asks what conferences, summits, meetups, roadshows, workshops, webinars and sponsorships each
+   rival ran in the last year or has announced.
+2. `event_followups` picks each rival's main events (2 by default) and asks two questions per event:
+   attendance/registrations (whole web), and social engagement (Exa `include_domains` limited to
+   LinkedIn, X, YouTube and Instagram, widening to the whole web on the retry).
+3. Each rival gets an events table: type, date, place, audience, attendees, engagement, coverage,
+   partners. Rules:
+   - events run by a different company with a similar name are left out (with the reason)
+   - events whose own date is older than `max_age_days` are left out
+   - an attendance or engagement figure no source shows is removed and marked ⚠
+   - only a sourced attendance figure counts as a concrete result for a Strong rating
+   - private individuals' names are scrubbed from the metrics
+   - an attendance or engagement figure that is on a page the event doesn't cite gets that page added
+     to its sources, so every figure links to where it came from
+   The profile step reads each researcher's written answer as well as its findings, so caveats like
+   "this may be a different company" reach it, and it sees which sources are the rival's own site.
+4. No action plan: `summarize_events` writes 3 to 5 key findings instead (who runs the most events,
+   which formats, cities and months, what drew the biggest turnout). Each must cite a checked rival
+   event, and numbers no source shows are flagged.
+5. The dashboard becomes a research view: key findings, an event calendar, events per rival,
+   sourced attendance, the event mix (types, formats, places), a filterable and sortable events
+   table, and a profile per rival (most recent event, next event, biggest stated turnout).
 
-## Ways to run it
-- **Web app (recommended):** FastAPI backend + React frontend. Find rivals → untick non-rivals →
-  live scan → report dashboard (headline numbers, strength chart, recommendations, fact checks,
-  filterable campaign table) with **Download .md** and **Print / save PDF**. Saved reports open the
-  same way; reports from before the dashboard existed open as text.
-- **Command line:** `python3 runner.py --company Figma` (see options below).
+**Who does what**
+- **Exa** does all the web research:
+  - `search` (type auto + highlights) finds pages by meaning
+  - `get_contents` reads full pages so claims can be checked
+  - a search with an `output_schema` finds rivals
+- **The AI** plans, answers from the numbered sources, judges its own answers, finds gaps and writes
+  the plan. The provider is whichever key is in `.env` (or `AI_PROVIDER`):
+  - **Claude Haiku 5.5** (`ANTHROPIC_API_KEY`): `claude-haiku-5-5` for the planner and researchers.
+  - **Gemini** (`GEMINI_API_KEY`): Flash models for the planner, Flash-Lite for researchers. Each role
+    has a list of fallbacks: a model that hits its daily free-tier limit is skipped for the day, and
+    calls share a rate limiter (`GEMINI_RPM`, default 10/minute).
+  - **Claude via OpenCode** (`OPENCODE_API_KEY`, `AI_PROVIDER=opencode`).
+  - Override models in Settings or with `PLANNER_MODEL` / `RESEARCHER_MODEL`.
+  - "Busy" errors are retried with growing waits. A bad key, no credit or a used-up quota stops the
+    scan with a plain message.
+- **Plain rules** (no AI) keep it honest:
+  - a finding must cite a page the researcher read (made-up ids are dropped)
+  - the page must be about that company: on its site, or naming it (look-alikes are dropped)
+  - findings older than `max_age_days` (default 365) are dropped; undated ones are flagged
+  - numbers the page doesn't show are flagged, and confidence drops to Low
+  - **rubric:**
+    - Strong = 2+ independent outside sources, or a concrete result a source states
+    - Medium = one outside source or own-channel engagement
+    - Weak = own announcement only
+  - the AI rates first; the rule lowers any rating the cited sources can't back
+  - every action must cite at least one checked rival source, or it's dropped (one retry)
+  - every search names the company's website, even the AI's rewritten retry searches
+
+## Phoenix tracing (OpenInference)
+
+- **Auto-traced:** `LangChainInstrumentor` records every graph step as a CHAIN span and every model
+  call as an LLM span, with prompt, output, model name and token counts.
+- **Hand-made spans:** Exa calls and checks get their proper span kind and nest under the step that
+  made them.
+
+| Span | Kind |
+|---|---|
+| `competitor_scan (start / resume)`: one per run segment | AGENT |
+| `researcher_agent Q3`: one per question, holding its steps | AGENT |
+| graph steps (`understand`, `plan_questions`, `search`, `judge`…) | CHAIN |
+| model calls | LLM |
+| `exa.search`, `exa.discover`: every result as a retrieval document | RETRIEVER |
+| `exa.read` (get_contents) | TOOL |
+| `check.findings`, `check.rubric`, `check.actions` | GUARDRAIL |
+| `judge.answer` (did the researcher answer it? with `eval.label`) | EVALUATOR |
+
+**Sessions:** a scan that pauses for you produces one trace per segment. All of them share
+`session.id` = the run id, so Phoenix's **Sessions** tab shows the whole scan. The dashboard links
+to its trace.
+
+### Groundedness evals
+
+`evals/groundedness.py` grades two steps with Phoenix's faithfulness evaluator (`phoenix-evals`),
+using Claude Haiku 5.5 as the judge, and writes the results back to the spans as annotations. Each
+step is judged against exactly what its AI saw.
+
+| Annotation | On span | Judged against | Passes when |
+|---|---|---|---|
+| `groundedness` | `answer` (one researcher's answer) | the pages Exa returned (same 1,500-character cut the researcher saw) and today's date | the answer and its claims only say what the pages say |
+| `profile_groundedness` | `profile_rival` (one rival's profile) | per item: the findings it cites, the strength rubric, and the scan's rules (right company, not too old, only attendance earns Strong) | every event or campaign, and the summary, holds up |
+
+- **Answers** are graded before the rule-based checks remove anything, so the score shows how often
+  the researcher goes beyond its sources.
+- **Profiles** are graded as they land in the report. Each event or campaign is judged on its own:
+  the profile's score is the share of items that passed, and the explanation names the ones that
+  failed. A long profile can't hide one bad event.
+- **Skipped:** mock-mode spans, and any span that already has the annotation.
+
+```bash
+python3 -m evals.groundedness                  # backfill the last 2 days, then stop
+python3 -m evals.groundedness --watch          # backfill, then grade new spans every 60 seconds
+python3 -m evals.groundedness --only profile --days 7 --limit 20
+```
+
+It uses `ANTHROPIC_API_KEY` from `.env`. Set `EVAL_ANTHROPIC_API_KEY` to bill evals to a separate
+key, or `EVAL_MODEL` to change the judge. In Phoenix, pick **All** (not Root Spans) and filter with
+`annotations['groundedness'].label == 'ungrounded'` or
+`annotations['profile_groundedness'].label == 'ungrounded'`.
 
 ## Setup
-1. `pip install -r requirements.txt`
-2. `cp .env.example .env`, then add a free Exa key (no card): https://dashboard.exa.ai/api-keys → `EXA_API_KEY`
-3. Web app only: `npm install --prefix web`
-4. Phoenix (optional, local, free): start it and leave it running:
-   `env -u PHOENIX_COLLECTOR_ENDPOINT PHOENIX_PORT=6006 PHOENIX_HOST=127.0.0.1 python3 -c "import time, phoenix as px; px.launch_app(); [time.sleep(3600) for _ in iter(int, 1)]"` → http://localhost:6006
-5. Langfuse (optional): set `LANGFUSE_PUBLIC_KEY` + `LANGFUSE_SECRET_KEY` (and `LANGFUSE_OTEL_ENDPOINT` for self-host).
+
+1. `pip3 install -r requirements.txt` (Python 3.9+)
+2. `cp .env.example .env`, then add:
+   - `EXA_API_KEY`: free at https://dashboard.exa.ai/api-keys
+   - an AI key: `ANTHROPIC_API_KEY` (Claude Haiku 5.5, https://console.anthropic.com) or
+     `GEMINI_API_KEY` (free at https://aistudio.google.com/apikey)
+3. `npm install --prefix web`
+4. Phoenix (optional, local, free). Start it and leave it running:
+   `env -u PHOENIX_COLLECTOR_ENDPOINT PHOENIX_PORT=6006 PHOENIX_HOST=127.0.0.1 python3 -c "import time, phoenix as px; px.launch_app(); [time.sleep(3600) for _ in iter(int, 1)]"`
+   → http://localhost:6006
 
 ## Run
-- **Web app:** `python3 -m uvicorn backend.main:app --port 8000 --reload`, and in a second terminal
-  `npm run dev --prefix web` → http://localhost:5173. Tick **Mock mode** in Settings for a free test run.
+
+- **Web app:**
+  - `python3 -m uvicorn backend.main:app --port 8000 --reload`
+  - in a second terminal: `npm run dev --prefix web` → http://localhost:5173
+  - Tick **Mock mode** for a free run on a fake web with planted mistakes. It needs no keys.
 - **Command line:**
-  - `python3 runner.py --company Figma --domain figma.com --description "Collaborative design tool"`
-  - `--dry-run` free mock data · `--competitors "Canva,canva.com" ...` skip discovery
-  - `--no-grade` leave ratings TBD · `--no-proof` skip page fetches · `--no-self` skip scanning your own company
-  - `--max-age-days 365` exclude older campaigns (0 keeps all) · `--tracer phoenix|langfuse|both|none`
-  - `--synthesis template|openai|auto` · `--input inputs.yaml` read settings from yaml
-- **Tests (free, no network):** `python3 -m unittest discover -s tests`
+  - `python3 -m agent --company Figma --domain figma.com --goal "enterprise marketing"`
+  - `--mock` free fake run · `--yes` don't pause for rivals · `--approve-questions` review the list
+  - `--focus field` research rivals' events (attendance, social engagement) instead of all marketing
+  - `--rivals "Sketch,sketch.com;Penpot,penpot.app"` skip discovery · `--no-trace` no Phoenix
+- **Tests** (free, offline; fake Exa + fake AI): `python3 -m unittest discover -s tests`
+  - the fact checks and rubric
+  - full runs with pauses, edits and retries
+  - the API
+  - span kinds, nesting and sessions
 
-## What a scan does
-1. **Discover** up to 4 direct competitors (skips discontinued products).
-2. **Search** 3 queries per competitor, naming its website (e.g. "Sketch (sketch.com)") so
-   look-alike companies don't creep in. Exa grades each campaign during the search: channel,
-   message, signal, Strength (Strong/Medium/Weak), Confidence, and whether it's really that company.
-3. **Fetch proof:** page text for the top URLs (campaigns making numeric claims first).
-4. **Fact checks:**
-   - campaigns older than `max_age_days` (default 365) are **excluded** (date from Exa, the page, or the URL)
-   - campaigns from a **different company or product** with a similar name are **excluded**
-   - numbers in a rating that don't appear in the source are **flagged** and confidence drops to Low
-   - campaigns with no known date are kept and flagged
-5. **Your own company:** the same searches on you, so recommendations don't repeat what you already do.
-6. **Recommendations:** Exa's answer endpoint writes 3–5. Each must cite scanned competitor
-   campaigns by ID; uncited ones are dropped. Mock runs show highlights instead.
-7. **Report:** `reports/<date>_competitor-scan_<run>.md` plus a `.json` copy for the dashboard.
-   Trace in `traces/<run>.jsonl` (and Phoenix/Langfuse if selected).
+## Code map
 
-## Reading a trace
-Each step is a span: `scan.run` → `exa.discover` → one `competitor` per rival (with `exa.search`,
-`exa.proof`, `grade`, `verify`) → your own company → `exa.answer`. Check `results`/`graded` on
-searches, `stale`/`off_topic`/`unverified_numbers` on `verify`, and `recommendations` on `exa.answer`.
-Phoenix shows kind "unknown" and $0 cost for these spans; that's expected (it only auto-fills those for LLM calls).
+| File | What it does |
+|---|---|
+| `agent/graph.py` | The LangGraph graph, the researcher sub-graph, prompts |
+| `agent/exa.py` | Exa calls (traced), error handling, the mock web |
+| `agent/llm.py` | Models via OpenCode; `MockChatModel` for mock runs |
+| `agent/checks.py` | Fact checks and the rubric (plain rules) |
+| `agent/schemas.py` | The forms each AI step fills in |
+| `agent/tracing.py` | Phoenix + OpenInference setup, hand-made spans, sessions |
+| `agent/run.py` | Runs the graph in segments (pause → resume), streams events |
+| `agent/report.py` | Writes the `.json` and `.md` report |
+| `backend/main.py` | FastAPI: start, resume, reports (keys stay server-side) |
+| `web/src/` | React dashboard: setup, live view, pauses, report |
+| `evals/groundedness.py` | Groundedness evals on research answers and rival profiles, logged to Phoenix |
 
 ## Costs
-- Exa free tier: $20 signup credit + $10/month.
-- Real scan (4 competitors + your company + recommendations) ≈ $0.06. Mock runs and tests are free.
-- OpenAI rewrite only if `OPENAI_API_KEY` is set (off by default; the template keeps every check visible).
-- Phoenix/Langfuse self-host: free.
+
+- **Exa:** a default run (4 rivals × 4 questions + 2 about you, up to 4 follow-ups) makes roughly
+  40–90 Exa calls (search + page reads), depending on how many questions need a second search.
+  Exa's free tier is $20 at signup + $10/month.
+- **AI:** one planner call per step, plus one or two researcher calls per question: about 60 calls
+  for a default run (the last real run used 96k tokens). With Claude Haiku 5.5 that's billed per token
+  by Anthropic. Gemini's free tier covers it if you stay under its daily limits. Phoenix shows the
+  tokens for each call.
+- **Mock runs and tests:** free.
 
 ## Limitations
-- Recommendations know your marketing campaigns, not your product features, so they can suggest something you already offer.
-- Exa's answer endpoint can draw on its own web search for context; only its citations are guaranteed to come from the scan.
+
+- Paused scans live in server memory: restarting the backend forgets a scan that's waiting for you.
+- Python 3.9 pins LangGraph to 0.6.11.
+- Public signals aren't results: it can say a campaign got press, not whether it made money.
 - The app is light mode only.
