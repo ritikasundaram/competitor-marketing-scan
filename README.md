@@ -37,6 +37,10 @@ write_report ─ reports/<date>_scan_<run>.json (dashboard) + .md
    - an attendance or engagement figure no source shows is removed and marked ⚠
    - only a sourced attendance figure counts as a concrete result for a Strong rating
    - private individuals' names are scrubbed from the metrics
+   - an attendance or engagement figure that is on a page the event doesn't cite gets that page added
+     to its sources, so every figure links to where it came from
+   The profile step reads each researcher's written answer as well as its findings, so caveats like
+   "this may be a different company" reach it, and it sees which sources are the rival's own site.
 4. No action plan: `summarize_events` writes 3 to 5 key findings instead (who runs the most events,
    which formats, cities and months, what drew the biggest turnout). Each must cite a checked rival
    event, and numbers no source shows are flagged.
@@ -94,6 +98,35 @@ write_report ─ reports/<date>_scan_<run>.json (dashboard) + .md
 `session.id` = the run id, so Phoenix's **Sessions** tab shows the whole scan. The dashboard links
 to its trace.
 
+### Groundedness evals
+
+`evals/groundedness.py` grades two steps with Phoenix's faithfulness evaluator (`phoenix-evals`),
+using Claude Haiku 5.5 as the judge, and writes the results back to the spans as annotations. Each
+step is judged against exactly what its AI saw.
+
+| Annotation | On span | Judged against | Passes when |
+|---|---|---|---|
+| `groundedness` | `answer` (one researcher's answer) | the pages Exa returned (same 1,500-character cut the researcher saw) and today's date | the answer and its claims only say what the pages say |
+| `profile_groundedness` | `profile_rival` (one rival's profile) | per item: the findings it cites, the strength rubric, and the scan's rules (right company, not too old, only attendance earns Strong) | every event or campaign, and the summary, holds up |
+
+- **Answers** are graded before the rule-based checks remove anything, so the score shows how often
+  the researcher goes beyond its sources.
+- **Profiles** are graded as they land in the report. Each event or campaign is judged on its own:
+  the profile's score is the share of items that passed, and the explanation names the ones that
+  failed. A long profile can't hide one bad event.
+- **Skipped:** mock-mode spans, and any span that already has the annotation.
+
+```bash
+python3 -m evals.groundedness                  # backfill the last 2 days, then stop
+python3 -m evals.groundedness --watch          # backfill, then grade new spans every 60 seconds
+python3 -m evals.groundedness --only profile --days 7 --limit 20
+```
+
+It uses `ANTHROPIC_API_KEY` from `.env`. Set `EVAL_ANTHROPIC_API_KEY` to bill evals to a separate
+key, or `EVAL_MODEL` to change the judge. In Phoenix, pick **All** (not Root Spans) and filter with
+`annotations['groundedness'].label == 'ungrounded'` or
+`annotations['profile_groundedness'].label == 'ungrounded'`.
+
 ## Setup
 
 1. `pip3 install -r requirements.txt` (Python 3.9+)
@@ -137,6 +170,7 @@ to its trace.
 | `agent/report.py` | Writes the `.json` and `.md` report |
 | `backend/main.py` | FastAPI: start, resume, reports (keys stay server-side) |
 | `web/src/` | React dashboard: setup, live view, pauses, report |
+| `evals/groundedness.py` | Groundedness evals on research answers and rival profiles, logged to Phoenix |
 
 ## Costs
 

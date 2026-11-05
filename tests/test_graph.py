@@ -202,6 +202,52 @@ class FieldMarketingTests(unittest.TestCase):
         self.assertEqual(self.data["stats"]["key_findings"], len(summ["findings"]))
 
 
+class ProfileStepTests(unittest.TestCase):
+    """The profile step sees the researchers' caveats and fixes citations for figures."""
+
+    def _state(self):
+        q = {"id": "Q1", "company": "Sketch", "domain": "sketch.com", "dimension": "events", "is_self": False,
+             "question": "Which events did Sketch run?", "round": 1}
+        finding = {"claim": "Sketch hosted a meetup in Utrecht.", "source_id": "Q1-1", "date": "2026-10-01",
+                   "confidence": "High", "flags": []}
+        return {"company": {"name": "Figma", "domain": "figma.com"},
+                "profile": {"summary": "Figma makes design tools.", "products": []},
+                "settings": {**graph.DEFAULTS, "mock": True, "focus": "field"},
+                "answers": [{"question": q, "status": "answered", "findings": [finding], "attempts": 1,
+                             "queries": [], "missing": "",
+                             "answer": "Sketch hosted a meetup; another page may be about a different company."}],
+                "sources": {"Q1-1": {"url": "https://sketch.com/events", "title": "Sketch meetup",
+                                     "text": "Sketch meetup in Utrecht on 1 October 2026."},
+                            "Q1-2": {"url": "https://lu.ma/sketch-utrecht", "title": "Luma",
+                                     "text": "Sketch Utrecht meetup: 250 registered."}}}
+
+    def test_prompt_carries_researcher_answers_and_source_sites(self):
+        seen = {}
+
+        def fake_ask(role, schema, system, user, settings):
+            seen["user"] = user
+            return schema(summary="s", positioning="p", events=[], threat="Low", threat_why="w")
+
+        with umock.patch.object(graph, "ask", fake_ask):
+            graph.profile_rival_events({"name": "Sketch", "domain": "sketch.com"}, self._state())
+        self.assertIn("researcher's answer: Sketch hosted a meetup; another page may be about a different company.",
+                      seen["user"])
+        self.assertIn("[Q1-1 · sketch.com (own site)]", seen["user"])
+
+    def test_a_figure_on_an_uncited_page_gets_that_page_cited(self):
+        from agent.schemas import RivalEvent, RivalEventProfile
+        ev = RivalEvent(name="Utrecht meetup", kind="meetup", organizer="Sketch", run_by_rival=True,
+                        date="2026-10-01", attendees="250 registered", strength="Strong", why="w",
+                        source_ids=["Q1-1"])
+        prof = RivalEventProfile(summary="s", positioning="p", events=[ev], threat="Low", threat_why="w")
+        with umock.patch.object(graph, "ask", lambda *a, **k: prof):
+            out = graph.profile_rival_events({"name": "Sketch", "domain": "sketch.com"}, self._state())
+        e = out["profiles"][0]["events"][0]
+        self.assertEqual(e["attendees"], "250 registered")
+        self.assertEqual(e["source_ids"], ["Q1-1", "Q1-2"])
+        self.assertEqual(e["flags"], [])
+
+
 class FollowUpTests(unittest.TestCase):
     def test_follow_ups_repeating_a_failed_question_are_skipped(self):
         from agent.schemas import AtomicQuestion, FollowUps

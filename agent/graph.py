@@ -25,7 +25,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send, interrupt
 
 from . import exa, mock, tracing
-from .checks import (RUBRIC, check_findings, clean_ids, norm_url, on_own_site, rubric_cap, scrub_people,
+from .checks import (RUBRIC, check_findings, clean_ids, host, norm_url, on_own_site, rubric_cap, scrub_people,
                      similar, unverified_numbers)
 from .llm import (LLMStop, exhausted, get_model, is_daily_quota, is_stuck, is_transient, llm_stop_reason,
                   mark_exhausted, model_chain)
@@ -131,7 +131,9 @@ def _structured(model, schema, messages):
             return schema.model_validate(calls[0]["args"])
         except (IndexError, ValueError) as e:
             last_error = e
-            messages = messages + [HumanMessage(content=f"Answer by calling {schema.__name__} with valid fields.")]
+            problem = str(e).split("For further information")[0].strip()[:400]
+            messages = messages + [HumanMessage(content=f"Answer by calling {schema.__name__} with valid fields. "
+                                                        f"Your last answer had this problem: {problem}")]
     raise RuntimeError(f"The model didn't return a valid {schema.__name__}: {last_error}")
 
 
@@ -180,6 +182,33 @@ def fmt_findings(answers: list) -> str:
             flag = f" [flags: {'; '.join(f['flags'])}]" if f.get("flags") else ""
             lines.append(f"  - [{f['source_id']}] {f['claim']} (date: {f.get('date') or 'unknown'}){flag}")
     return "\n".join(lines) or "(no findings)"
+
+
+def fmt_research(answers: list, sources: dict, own_domain: str = "") -> str:
+    """For the profile step: each question with the researcher's own answer (which carries its caveats,
+    like "may be a different company"), then its checked findings with the website each source is on."""
+    lines = []
+    for a in answers:
+        q = a["question"]
+        lines.append(f"Q {q['id']} ({q['company']}, {q['dimension']}): {q['question']}")
+        lines.append(f"  status: {a['status']}")
+        if a.get("answer"):
+            lines.append(f"  researcher's answer: {a['answer']}")
+        for f in a["findings"]:
+            site = host((sources.get(f["source_id"]) or {}).get("url", ""))
+            mark = " (own site)" if own_domain and site.endswith(own_domain.lower()) else ""
+            flag = f" [flags: {'; '.join(f['flags'])}]" if f.get("flags") else ""
+            lines.append(f"  - [{f['source_id']}{' · ' + site + mark if site else ''}] {f['claim']} "
+                         f"(date: {f.get('date') or 'unknown'}){flag}")
+    return "\n".join(lines) or "(no findings)"
+
+
+PROFILE_RULES = (
+    "Read each researcher's answer, not just the findings: if it says a source may be about a different "
+    "company, or a figure isn't clearly tied to the event, respect that. Cite the source ids of the "
+    "findings that state each fact and figure, and nothing else. A source marked (own site) is the "
+    "competitor's own announcement; other sites are outside sources."
+)
 
 
 # ---------- 1. understand the user's company ----------
@@ -596,17 +625,21 @@ def profile_rival_events(r: dict, st: dict) -> dict:
                "numbers exactly as the findings state them, and leave a field empty when no finding gives it: "
                "never estimate. Keep metric fields short and never name private individuals. Cite only the "
                "source ids shown. Rate each event with the rubric; a stated attendance figure counts as a "
-               "concrete result, engagement counts alone don't.\n\n" + RUBRIC,
+               "concrete result, engagement counts alone don't. Give a date only when a finding states it, "
+               "and include an undated event only if the research suggests it is recent or upcoming. "
+               + PROFILE_RULES + "\n\n" + RUBRIC,
                f"User's company: {who(st['company'])}. {st['profile']['summary']}\n"
-               f"Competitor: {who(r)}\n\nFindings:\n{fmt_findings(st['answers'])}", s)
+               f"Competitor: {who(r)}\n\nResearch:\n{fmt_research(st['answers'], sources, r.get('domain', ''))}", s)
     events, camps, dropped = [], [], []
     with tracing.span("check.events", KIND.GUARDRAIL, input={"rival": r["name"],
                                                              "events": [e.model_dump() for e in prof.events]},
                       **{"guardrail.rules": "run by this rival; not older than max_age_days; citations exist; "
-                                            "attendance/engagement numbers appear in the sources; rating held "
+                                            "attendance/engagement numbers appear in the cited sources (a page "
+                                            "showing a figure the event doesn't cite gets added); rating held "
                                             "to the rubric (only attendance counts as a concrete result)"}) as sp:
-        all_text = " ".join(f"{x.get('title', '')} {x.get('snippet', '')} {x.get('text', '')}"
-                            for x in sources.values())
+        page = lambda x: f"{x.get('title', '')} {x.get('snippet', '')} {x.get('text', '')}"
+        all_text = " ".join(page(x) for x in sources.values())
+        repaired = []
         for e in prof.events:
             ids = _unique_ids(e.source_ids, sources)
             if not ids:
@@ -619,13 +652,20 @@ def profile_rival_events(r: dict, st: dict) -> dict:
             if when and s["max_age_days"] > 0 and (today() - when).days > s["max_age_days"]:
                 dropped.append({"name": e.name, "reason": f"old: held {e.date}"})
                 continue
-            text = " ".join(f"{sources[i].get('title', '')} {sources[i].get('snippet', '')} "
-                            f"{sources[i].get('text', '')}" for i in ids)
+            text = " ".join(page(sources[i]) for i in ids)
             ev, flags, verified = e.model_dump(), [], False
             for field in EVENT_METRICS:
                 value = ev[field]
                 if not value or not any(ch.isdigit() for ch in value):
                     continue
+                if unverified_numbers(value, text):
+                    # The figure isn't on the pages this event cites. If another page shows it, cite that
+                    # page too, so every figure links to where it came from.
+                    extra = [i for i, x in sources.items() if i not in ids and not unverified_numbers(value, page(x))]
+                    if extra:
+                        ids += extra[:2]
+                        text += " " + " ".join(page(sources[i]) for i in extra[:2])
+                        repaired.append({"event": e.name, "field": field, "added": extra[:2]})
                 if unverified_numbers(value, text) and unverified_numbers(value, all_text):
                     flags.append(f"{field} not found in sources: {value}")
                     ev[field] = ""  # an unbacked number is worse than none; the flag keeps the claim visible
@@ -645,6 +685,7 @@ def profile_rival_events(r: dict, st: dict) -> dict:
         sp.set("events.kept", len(events))
         sp.set("events.dropped", len(dropped))
         sp.set("events.metric_flags", sum(len(e["flags"]) for e in events))
+        sp.set("events.citations_added", len(repaired))
         sp.output(events)
     emit("rival", name=r["name"], status="done")
     return {"profiles": [{"rival": r, "summary": prof.summary, "positioning": prof.positioning,
@@ -661,9 +702,9 @@ def profile_rival(payload: dict) -> dict:
     prof = ask("planner", RivalProfile,
                "You profile one competitor's recent marketing from checked research findings. Group findings "
                "into campaigns or moves. Cite only the source ids shown. Rate each campaign with the rubric; "
-               "rate lower when unsure.\n\n" + RUBRIC,
+               "rate lower when unsure. " + PROFILE_RULES + "\n\n" + RUBRIC,
                f"User's company: {who(st['company'])}. {st['profile']['summary']}\n"
-               f"Competitor: {who(r)}\n\nFindings:\n{fmt_findings(st['answers'])}", s)
+               f"Competitor: {who(r)}\n\nResearch:\n{fmt_research(st['answers'], sources, r.get('domain', ''))}", s)
     camps = []
     with tracing.span("check.rubric", KIND.GUARDRAIL, input={"rival": r["name"],
                                                              "campaigns": [c.model_dump() for c in prof.campaigns]},

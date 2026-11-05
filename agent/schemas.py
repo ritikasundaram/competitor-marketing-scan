@@ -72,7 +72,8 @@ class FollowUps(BaseModel):
 class Campaign(BaseModel):
     name: str = Field(description="Short name for the campaign or move.")
     what: str = Field(description="What they did, one sentence.")
-    channel: str = Field(description="Where it ran: press, social, email, webinar, events, partners, product, pricing.")
+    channel: str = Field(description="Where it ran: website, content, press, social, email, webinar, events, "
+                                     "partners, product, pricing. 'pricing' only for a price or plan change.")
     strength: Literal["Strong", "Medium", "Weak"] = Field(description="Rated with the rubric.")
     why: str = Field(description="One sentence explaining the rating from the evidence.")
     source_ids: List[str] = Field(description="Source ids backing this campaign.")
@@ -80,7 +81,7 @@ class Campaign(BaseModel):
 
 class RivalProfile(BaseModel):
     summary: str = Field(description="Two sentences: what this rival is pushing right now and to whom.")
-    positioning: str = Field(description="How they describe themselves vs. the user's company, one sentence.")
+    positioning: str = Field("", description="How they describe themselves vs. the user's company, one sentence.")
     campaigns: List[Campaign]
     threat: Literal["High", "Medium", "Low"] = Field(description="How much this rival's recent moves threaten the user's company.")
     threat_why: str = Field(description="One sentence on why.")
@@ -141,7 +142,8 @@ class RivalEvent(BaseModel):
     organizer: str = Field("", description="Who ran or sponsored it, as the sources say (a company, not a person).")
     run_by_rival: bool = Field(description="True only if the competitor itself hosted, co-hosted or sponsored "
                                            "it. False for a different company with a similar name.")
-    date: str = Field("", description="YYYY-MM-DD or YYYY-MM if known, else empty.")
+    date: str = Field("", description="YYYY-MM-DD or YYYY-MM, only as a finding states it, else empty. "
+                                     "Never guess a missing year.")
     location: str = Field("", description="City/venue, or 'online'. Empty if unknown.")
     format: Literal["in-person", "virtual", "hybrid", "unknown"] = "unknown"
     audience: str = Field("", description="Who it was for, e.g. 'design leaders', 'developers'.")
@@ -160,7 +162,7 @@ class RivalEvent(BaseModel):
 
 class RivalEventProfile(BaseModel):
     summary: str = Field(description="Two sentences: how this rival uses events and who it targets.")
-    positioning: str = Field(description="What its events say about how it wants to be seen, one sentence.")
+    positioning: str = Field("", description="What its events say about how it wants to be seen, one sentence.")
     events: List[RivalEvent]
     threat: Literal["High", "Medium", "Low"] = Field(description="How much its event program threatens "
                                                                  "the user's company in the field.")

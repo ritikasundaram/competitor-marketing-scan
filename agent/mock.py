@@ -109,7 +109,7 @@ def _rival(system, user):
     camps = []
     for block in re.split(r"^Q ", user, flags=re.M)[1:]:
         dim = (re.search(r"^\S+ \(.+?, (\w+)\)", block) or [None, "campaign"])[1]
-        found = re.findall(r"^  - \[(\S+?)\] (.+?) \(date:", block, re.M)
+        found = re.findall(r"^  - \[(\S+?)(?: · [^\]]*)?\] (.+?) \(date:", block, re.M)
         if found and len(camps) < 4:
             camps.append({"name": f"{comp} {dim} push", "what": found[0][1], "channel": "press",
                           "strength": "Strong", "why": "Mock rating: the mock calls everything strong.",
@@ -166,7 +166,7 @@ def _rival_events(system, user):
     blocks = {}
     for block in re.split(r"^Q ", user, flags=re.M)[1:]:
         dim = (re.search(r"^\S+ \(.+?, (\w+)\)", block) or [None, ""])[1]
-        blocks.setdefault(dim, []).extend(re.findall(r"^  - \[(\S+?)\] (.+?) \(date:", block, re.M))
+        blocks.setdefault(dim, []).extend(re.findall(r"^  - \[(\S+?)(?: · [^\]]*)?\] (.+?) \(date:", block, re.M))
     att = next((c for _, c in blocks.get("attendance", []) if "attendees" in c), "")
     att = (re.search(r"[\d,]+ attendees", att) or [""])[0]
     eng = next((c for _, c in blocks.get("engagement", []) if "reactions" in c), "")
